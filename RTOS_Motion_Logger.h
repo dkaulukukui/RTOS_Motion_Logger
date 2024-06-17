@@ -104,3 +104,9 @@ struct BNO_DATA {
 
 BNO_DATA BNO_Array[BNO_ARRAY_SIZE]; //Array to hold BNO data
 BNO_DATA BNO_Transmit[BNO_ARRAY_SIZE]; 
+
+struct euler_t {
+  float yaw;
+  float pitch;
+  float roll;
+} ypr;

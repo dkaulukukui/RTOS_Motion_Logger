@@ -1,11 +1,16 @@
 //**************************************************************************
-// FreeRtos on Samd21
-// By Scott Briscoe
+// RTOS MOTION LOGGER using BNO085
 //
-// Project is a simple example of how to get FreeRtos running on a SamD21 processor
-// Project can be used as a template to build your projects off of as well
-//
+//To Do List:
+//  - get data and calculate heading
+//  - get data and calculate pitch, yaw and roll
+//  - implement SD card logging
+//  - implement GPS library
+//  - implement RTC library
+//  - implement OLED display
+//  - figure out calibration procedure for BNO085
 //**************************************************************************
+
 
 //#include <FreeRTOS_SAMD21.h>
 #include "RTOS_Motion_Logger.h"
@@ -26,7 +31,23 @@ void setReports(void) {
 }
 
 //**************************************************************************
+void quaternionToEuler(float qr, float qi, float qj, float qk, euler_t* ypr, bool degrees = false) {
 
+    float sqr = sq(qr);
+    float sqi = sq(qi);
+    float sqj = sq(qj);
+    float sqk = sq(qk);
+
+    ypr->yaw = atan2(2.0 * (qi * qj + qk * qr), (sqi - sqj - sqk + sqr));
+    ypr->pitch = asin(-2.0 * (qi * qk - qj * qr) / (sqi + sqj + sqk + sqr));
+    ypr->roll = atan2(2.0 * (qj * qk + qi * qr), (-sqi - sqj + sqk + sqr));
+
+    if (degrees) {
+      ypr->yaw *= RAD_TO_DEG;
+      ypr->pitch *= RAD_TO_DEG;
+      ypr->roll *= RAD_TO_DEG;
+    }
+}
 
 //**************************************************************************
 void myDelayUs(int us)
@@ -173,8 +194,8 @@ static void threadA( void *pvParameters )  //Data Getting task
       }
 
       BNO_error = 0;
+      BNO_Head_Q = BNO_Head_Q < (BNO_ARRAY_SIZE -1) ? BNO_Head_Q +1 : 0; //advance fifo index, if true increment, else reset
       xSemaphoreGive(BNO_Data_SemaphorHandle);  //signal new data
-      BNO_Head_Q = BNO_Head_Q < (BNO_ARRAY_SIZE -1) ? BNO_Head_Q +1 : 0; //advance fifo index
 
     }
 
@@ -192,9 +213,12 @@ static void threadB( void *pvParameters )  //Data printing task
 {
   SERIAL.println("Thread B: Started");
 
+  const uint8_t BUFLEN = 100;
+  char buf[BUFLEN] = "";
+
   while(1) { 
-    const uint8_t BUFLEN = 160;
-    char buf[BUFLEN] = "";
+
+    strcpy(buf,""); //reset buffer
 
     xSemaphoreTake(BNO_Data_SemaphorHandle, portMAX_DELAY);  // wait for next data record
     BNO_DATA *bno_data = &BNO_Array[BNO_Tail_Q];
@@ -231,8 +255,8 @@ static void threadB( void *pvParameters )  //Data printing task
 
     SERIAL.println(buf);
 
-    xSemaphoreGive(BNO_Space_SemaphorHandle);
     BNO_Tail_Q = BNO_Tail_Q < (BNO_ARRAY_SIZE-1) ? BNO_Tail_Q +1 :0;
+    xSemaphoreGive(BNO_Space_SemaphorHandle);
 
   }
 
