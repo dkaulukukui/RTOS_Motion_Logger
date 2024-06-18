@@ -17,12 +17,12 @@
 
 //**************************************************************************
 void setReports(void) {
-  bno08x.enableReport(SH2_ACCELEROMETER);
-  bno08x.enableReport(SH2_GYROSCOPE_CALIBRATED);
+  bno08x.enableReport(SH2_ACCELEROMETER, reportIntervalUs);
+  //bno08x.enableReport(SH2_GYROSCOPE_CALIBRATED);
   //bno08x.enableReport(SH2_MAGNETIC_FIELD_CALIBRATED);
   //bno08x.enableReport(SH2_LINEAR_ACCELERATION);
   //bno08x.enableReport(SH2_GRAVITY);
-  //bno08x.enableReport(SH2_ROTATION_VECTOR);
+  bno08x.enableReport(SH2_ROTATION_VECTOR, reportIntervalUs);
   //bno08x.enableReport(SH2_GEOMAGNETIC_ROTATION_VECTOR);
   //bno08x.enableReport(SH2_GAME_ROTATION_VECTOR);
   //bno08x.enableReport(SH2_RAW_ACCELEROMETER);
@@ -47,6 +47,44 @@ void quaternionToEuler(float qr, float qi, float qj, float qk, euler_t* ypr, boo
       ypr->pitch *= RAD_TO_DEG;
       ypr->roll *= RAD_TO_DEG;
     }
+}
+
+void Normalized_quaternionToEuler(float qr, float qi, float qj, float qk, euler_t* ypr, bool degrees = false) {
+  // Normalise quaternion before conversion.
+  float qlength = sqrt(sq(qr) + sq(qi) + sq(qj) + sq(qk));
+  qr /= qlength;
+  qi /= qlength;
+  qj /= qlength;
+  qk /= qlength;
+  
+  float sqr = sq(qr);
+  float sqi = sq(qi);
+  float sqj = sq(qj);
+  float sqk = sq(qk);
+
+  ypr->yaw =  atan2( 2.0 * (qi * qj + qk * qr),  (sqi - sqj - sqk + sqr));
+  ypr->pitch = asin(-2.0 * (qi * qk - qj * qr) / (sqi + sqj + sqk + sqr));
+  ypr->roll = atan2( 2.0 * (qj * qk + qi * qr), (-sqi - sqj + sqk + sqr));
+
+  if (degrees) {
+    ypr->yaw   *= RAD_TO_DEG;
+    ypr->pitch *= RAD_TO_DEG;
+    ypr->roll  *= RAD_TO_DEG;
+  }
+}
+
+void quaternionToEulerRV(sh2_RotationVectorWAcc_t* rotational_vector, euler_t* ypr, bool degrees = false) {
+  quaternionToEuler(rotational_vector->real, rotational_vector->i, rotational_vector->j, rotational_vector->k, ypr, degrees);
+}
+
+float getHeading() {
+  // This heading is relative to magnetic North. Add the local declination for True North.
+  // Returns degrees East of North.
+  if (yaw > -90 && yaw < 180) { // Quadrants I,II,IV
+    return (90 - yaw);
+  } else {                      // Quadrant III
+    return -(yaw + 270);
+  }
 }
 
 //**************************************************************************
@@ -83,13 +121,14 @@ static void threadA( void *pvParameters )  //Data Getting task
   //Serial.println("Adafruit BNO08x test!");
 
   // Try to initialize!
-  if (!bno08x.begin_I2C()) {
+  while (!bno08x.begin_I2C()) {
+  //if (!bno08x.begin_I2C()) {
     // if (!bno08x.begin_UART(&Serial1)) {  // Requires a device with > 300 byte
     // UART buffer! if (!bno08x.begin_SPI(BNO08X_CS, BNO08X_INT)) {
     Serial.println("Failed to find BNO08x chip");
-    while (1) {
-      delay(10);
-    }
+    //while (1) {
+      delay(100);
+    //}
   }
   Serial.println("BNO08x Found!");
 
@@ -127,6 +166,8 @@ static void threadA( void *pvParameters )  //Data Getting task
         continue;
       }
 
+      acc_status = sensorValue.status;
+
       BNO_DATA *bno_data = &BNO_Array[BNO_Head_Q]; //grab the first data set in Q
 
       switch (sensorValue.sensorId) {
@@ -161,6 +202,13 @@ static void threadA( void *pvParameters )  //Data Getting task
           bno_data->RotVec_I = sensorValue.un.rotationVector.i;
           bno_data->RotVec_J = sensorValue.un.rotationVector.j;
           bno_data->RotVec_K = sensorValue.un.rotationVector.k;
+
+          Normalized_quaternionToEuler(bno_data->RotVec_Real, bno_data->RotVec_I, bno_data->RotVec_J, bno_data->RotVec_K, &ypr, true); // degrees
+          yaw = ypr.yaw;
+          pitch = ypr.pitch;
+          roll = ypr.roll;
+          heading = getHeading();
+          rot_accuracy = sensorValue.un.rotationVector.accuracy;
           break;
         case SH2_GEOMAGNETIC_ROTATION_VECTOR:
           bno_data->GeoMagVec_Real = sensorValue.un.geoMagRotationVector.real;
@@ -213,44 +261,70 @@ static void threadB( void *pvParameters )  //Data printing task
 {
   SERIAL.println("Thread B: Started");
 
+
+  //create temporary buffers to hold stuff for printing
   const uint8_t BUFLEN = 100;
   char buf[BUFLEN] = "";
 
+  const uint8_t FLT_STR_LEN = 10;
+  
+  //char Gyro_X[FLT_STR_LEN] = ""; 
+  //char Gyro_Y[FLT_STR_LEN] = "";
+  //char Gyro_Z[FLT_STR_LEN] = "";
+  char Accel_X[FLT_STR_LEN] = ""; 
+  char Accel_Y[FLT_STR_LEN] = "";
+  char Accel_Z[FLT_STR_LEN] = "";
+  char YAW[FLT_STR_LEN] = ""; 
+  char PITCH[FLT_STR_LEN] = "";
+  char ROLL[FLT_STR_LEN] = "";
+  char HDG[FLT_STR_LEN] = "";
+  char ROT_ACC[FLT_STR_LEN] = "";
+
+  BNO_DATA *bno_data= &BNO_Array[BNO_Tail_Q];
+
   while(1) { 
 
+    //clear all temp buffers
     strcpy(buf,""); //reset buffer
+    strcpy(Accel_X,""); //reset buffer
+    strcpy(Accel_Y,""); //reset buffer
+    strcpy(Accel_Z,""); //reset buffer
+    //strcpy(YAW,""); //reset buffer
+    strcpy(PITCH,""); //reset buffer
+    strcpy(ROLL,""); //reset buffer
+    strcpy(HDG,""); //reset buffer
+    strcpy(ROT_ACC,""); //reset buffer
 
     xSemaphoreTake(BNO_Data_SemaphorHandle, portMAX_DELAY);  // wait for next data record
-    BNO_DATA *bno_data = &BNO_Array[BNO_Tail_Q];
+    bno_data = &BNO_Array[BNO_Tail_Q];
 
-    const uint8_t FLT_STR_LEN = 10;
-    char Gyro_X[FLT_STR_LEN] = ""; 
-    char Gyro_Y[FLT_STR_LEN] = "";
-    char Gyro_Z[FLT_STR_LEN] = "";
-    char Accel_X[FLT_STR_LEN] = ""; 
-    char Accel_Y[FLT_STR_LEN] = "";
-    char Accel_Z[FLT_STR_LEN] = "";
-
-
-    dtostrf(bno_data->Gyro_X, 5,2, Gyro_X);
-    dtostrf(bno_data->Gyro_Y, 5,2, Gyro_Y);
-    dtostrf(bno_data->Gyro_Z, 5,2, Gyro_Z);
+    //dtostrf(bno_data->Gyro_X, 5,2, Gyro_X);
+    //dtostrf(bno_data->Gyro_Y, 5,2, Gyro_Y);
+    //dtostrf(bno_data->Gyro_Z, 5,2, Gyro_Z);
     dtostrf(bno_data->Accel_X, 5,2, Accel_X);
     dtostrf(bno_data->Accel_Y, 5,2, Accel_Y);
     dtostrf(bno_data->Accel_Z, 5,2, Accel_Z);
+    //dtostrf(yaw, 5,2, YAW);
+    dtostrf(pitch, 5,2, PITCH);
+    dtostrf(roll, 5,2, ROLL);
+    dtostrf(heading, 5,2, HDG);
+    dtostrf(rot_accuracy, 5,2, ROT_ACC);
 
-    strcat(buf, Gyro_X);
+    strcat(buf, HDG);
     strcat(buf, "\t");
-    strcat(buf, Gyro_Y);
+    //strcat(buf, YAW);
+    //strcat(buf, "\t");
+    strcat(buf, PITCH);
     strcat(buf, "\t");
-    strcat(buf, Gyro_Z);
+    strcat(buf, ROLL);
+    strcat(buf, "\t");
+    strcat(buf, ROT_ACC);
     strcat(buf, "\t");
     strcat(buf, Accel_X);
     strcat(buf, "\t");
     strcat(buf, Accel_Y);
     strcat(buf, "\t");
     strcat(buf, Accel_Z);
-
     //snprintf(buf, BUFLEN,"%d\t%d\t%d",bno_data->RawGyro_X, bno_data->RawGyro_Y, bno_data->RawGyro_Z);
 
     SERIAL.println(buf);

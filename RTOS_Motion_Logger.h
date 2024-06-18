@@ -110,3 +110,9 @@ struct euler_t {
   float pitch;
   float roll;
 } ypr;
+
+long reportIntervalUs = 20000; // 50Hz
+
+// Vars to hold most recent report values
+float yaw, pitch, roll, heading, rot_accuracy;
+int acc_status;
