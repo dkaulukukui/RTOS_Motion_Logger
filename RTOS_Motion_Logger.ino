@@ -17,10 +17,10 @@
 
 //**************************************************************************
 void setReports(void) {
-  bno08x.enableReport(SH2_ACCELEROMETER, reportIntervalUs);
+  //bno08x.enableReport(SH2_ACCELEROMETER, reportIntervalUs);
   //bno08x.enableReport(SH2_GYROSCOPE_CALIBRATED);
   //bno08x.enableReport(SH2_MAGNETIC_FIELD_CALIBRATED);
-  //bno08x.enableReport(SH2_LINEAR_ACCELERATION);
+  bno08x.enableReport(SH2_LINEAR_ACCELERATION, reportIntervalUs);
   //bno08x.enableReport(SH2_GRAVITY);
   bno08x.enableReport(SH2_ROTATION_VECTOR, reportIntervalUs);
   //bno08x.enableReport(SH2_GEOMAGNETIC_ROTATION_VECTOR);
@@ -63,8 +63,10 @@ void Normalized_quaternionToEuler(float qr, float qi, float qj, float qk, euler_
   float sqk = sq(qk);
 
   ypr->yaw =  atan2( 2.0 * (qi * qj + qk * qr),  (sqi - sqj - sqk + sqr));
-  ypr->pitch = asin(-2.0 * (qi * qk - qj * qr) / (sqi + sqj + sqk + sqr));
-  ypr->roll = atan2( 2.0 * (qj * qk + qi * qr), (-sqi - sqj + sqk + sqr));
+  //ypr->pitch = asin(-2.0 * (qi * qk - qj * qr) / (sqi + sqj + sqk + sqr));
+  //ypr->roll = atan2( 2.0 * (qj * qk + qi * qr), (-sqi - sqj + sqk + sqr));
+  ypr->roll = asin(-2.0 * (qi * qk - qj * qr) / (sqi + sqj + sqk + sqr));  //swapped for default orientation
+  ypr->pitch = atan2( 2.0 * (qj * qk + qi * qr), (-sqi - sqj + sqk + sqr));  //swapped for default orientation
 
   if (degrees) {
     ypr->yaw   *= RAD_TO_DEG;
@@ -78,13 +80,16 @@ void quaternionToEulerRV(sh2_RotationVectorWAcc_t* rotational_vector, euler_t* y
 }
 
 float getHeading() {
-  // This heading is relative to magnetic North. Add the local declination for True North.
-  // Returns degrees East of North.
-  if (yaw > -90 && yaw < 180) { // Quadrants I,II,IV
-    return (90 - yaw);
-  } else {                      // Quadrant III
-    return -(yaw + 270);
-  }
+  // Y axis facing north, X facing east 
+  //default yaw is reported in degrees from north, rotating west is posistive, rotatin east is negative
+  // South is either 180 or -180
+  // Returns heading in True 0-359.9
+
+  if (yaw > 0 && yaw < 180) { // Quadrants III, IV
+    return (360 - yaw);
+  } else {                      // Quadrant I and II
+    return -(yaw);
+  } 
 }
 
 //**************************************************************************
@@ -289,7 +294,7 @@ static void threadB( void *pvParameters )  //Data printing task
     strcpy(Accel_X,""); //reset buffer
     strcpy(Accel_Y,""); //reset buffer
     strcpy(Accel_Z,""); //reset buffer
-    //strcpy(YAW,""); //reset buffer
+    strcpy(YAW,""); //reset buffer
     strcpy(PITCH,""); //reset buffer
     strcpy(ROLL,""); //reset buffer
     strcpy(HDG,""); //reset buffer
@@ -301,10 +306,10 @@ static void threadB( void *pvParameters )  //Data printing task
     //dtostrf(bno_data->Gyro_X, 5,2, Gyro_X);
     //dtostrf(bno_data->Gyro_Y, 5,2, Gyro_Y);
     //dtostrf(bno_data->Gyro_Z, 5,2, Gyro_Z);
-    dtostrf(bno_data->Accel_X, 5,2, Accel_X);
-    dtostrf(bno_data->Accel_Y, 5,2, Accel_Y);
-    dtostrf(bno_data->Accel_Z, 5,2, Accel_Z);
-    //dtostrf(yaw, 5,2, YAW);
+    dtostrf(bno_data->LinearAccel_X, 5,2, Accel_X);
+    dtostrf(bno_data->LinearAccel_Y, 5,2, Accel_Y);
+    dtostrf(bno_data->LinearAccel_Z, 5,2, Accel_Z);
+    dtostrf(yaw, 5,2, YAW);
     dtostrf(pitch, 5,2, PITCH);
     dtostrf(roll, 5,2, ROLL);
     dtostrf(heading, 5,2, HDG);
@@ -312,8 +317,8 @@ static void threadB( void *pvParameters )  //Data printing task
 
     strcat(buf, HDG);
     strcat(buf, "\t");
-    //strcat(buf, YAW);
-    //strcat(buf, "\t");
+    strcat(buf, YAW);
+    strcat(buf, "\t");
     strcat(buf, PITCH);
     strcat(buf, "\t");
     strcat(buf, ROLL);
