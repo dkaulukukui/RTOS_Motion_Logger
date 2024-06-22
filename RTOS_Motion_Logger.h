@@ -187,3 +187,5 @@ GPS_DATA GPS_ARRAY[GPS_ARRAY_SIZE]; //Array to hold GPS data
 //**************************************************************************
 // Display defines
 //**************************************************************************
+
+const char LOG_SEPARATOR = '\t';

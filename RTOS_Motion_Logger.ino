@@ -91,8 +91,41 @@ float getHeading() {
     return -(yaw);
   } 
 }
+//***********************GPS Functions*********************** */
+void printGPS(){
+    Serial.print(F("\nTime: "));
+    if (GPS.hour < 10) { Serial.print('0'); }
+    Serial.print(GPS.hour, DEC); Serial.print(':');
+    if (GPS.minute < 10) { Serial.print('0'); }
+    Serial.print(GPS.minute, DEC); Serial.print(':');
+    if (GPS.seconds < 10) { Serial.print('0'); }
+    Serial.print(GPS.seconds, DEC); Serial.print('.');
+    if (GPS.milliseconds < 10) {
+      Serial.print(F("00"));
+    } else if (GPS.milliseconds > 9 && GPS.milliseconds < 100) {
+      Serial.print(F("0"));
+    }
+    Serial.println(GPS.milliseconds);
+    Serial.print(F("Date: "));
+    Serial.print(GPS.day, DEC); Serial.print('/');
+    Serial.print(GPS.month, DEC); Serial.print(F("/20"));
+    Serial.println(GPS.year, DEC);
+    Serial.print(F("Fix: ")); Serial.print((int)GPS.fix);
+    Serial.print(F(" quality: ")); Serial.println((int)GPS.fixquality);
+    if (GPS.fix) {
+      Serial.print(F("Location: "));
+      Serial.print(GPS.latitude, 4); Serial.print(GPS.lat);
+      Serial.print(F(", "));
+      Serial.print(GPS.longitude, 4); Serial.println(GPS.lon);
+      Serial.print(F("Speed (knots): ")); Serial.println(GPS.speed);
+      Serial.print(F("Angle: ")); Serial.println(GPS.angle);
+      Serial.print(F("Altitude: ")); Serial.println(GPS.altitude);
+      Serial.print(F("Satellites: ")); Serial.println((int)GPS.satellites);
+      Serial.print(F("Antenna status: ")); Serial.println((int)GPS.antenna);
+    }
+}
 
-//**************************************************************************
+//**********Utility Functions****************************************************************
 void myDelayUs(int us)
 {
   vTaskDelay( us / portTICK_PERIOD_US );  
@@ -106,6 +139,18 @@ void myDelayMs(int ms)
 void myDelayMsUntil(TickType_t *previousWakeTime, int ms)
 {
   vTaskDelayUntil( previousWakeTime, (ms * 1000) / portTICK_PERIOD_US );  
+}
+
+void append_float_to_log(char* s, float f, int length, int frac, char seperator){
+  int len = strlen(s);
+
+  char float_buffer[length+1] = "";
+  char sep_buffer[2] = "";
+  sep_buffer[0] = seperator;
+
+  dtostrf(f,length,frac,float_buffer);
+  strcat(s,float_buffer);
+  strcat(s,sep_buffer);
 }
 
 //*****************************************************************
@@ -129,23 +174,23 @@ static void threadA( void *pvParameters )  //Data Getting task
   //if (!bno08x.begin_I2C()) {
     // if (!bno08x.begin_UART(&Serial1)) {  // Requires a device with > 300 byte
     // UART buffer! if (!bno08x.begin_SPI(BNO08X_CS, BNO08X_INT)) {
-    Serial.println("Failed to find BNO08x chip");
+    Serial.println(F("Failed to find BNO08x chip"));
     //while (1) {
       delay(100);
     //}
   }
-  Serial.println("BNO08x Found!");
+  Serial.println(F("BNO08x Found!"));
 
   for (int n = 0; n < bno08x.prodIds.numEntries; n++) {
-    Serial.print("Part ");
+    Serial.print(F("Part "));
     Serial.print(bno08x.prodIds.entry[n].swPartNumber);
-    Serial.print(": Version :");
+    Serial.print(F(": Version :"));
     Serial.print(bno08x.prodIds.entry[n].swVersionMajor);
-    Serial.print(".");
+    Serial.print(F("."));
     Serial.print(bno08x.prodIds.entry[n].swVersionMinor);
-    Serial.print(".");
+    Serial.print(F("."));
     Serial.print(bno08x.prodIds.entry[n].swVersionPatch);
-    Serial.print(" Build ");
+    Serial.print(F(" Build "));
     Serial.println(bno08x.prodIds.entry[n].swBuildNumber);
   }
 
@@ -154,13 +199,13 @@ static void threadA( void *pvParameters )  //Data Getting task
   //**************************************************************************
  
   if (! rtc.begin()) {
-    Serial.println("Couldn't find RTC");
+    Serial.println(F("Couldn't find RTC"));
     Serial.flush();
     while (1) delay(10);
   }
 
   if (! rtc.isrunning()) {
-    Serial.println("RTC is NOT running, let's set the time!");
+    Serial.println(F("RTC is NOT running, let's set the time!"));
     // When time needs to be set on a new device, or after a power loss, the
     // following line sets the RTC to the date & time this sketch was compiled
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
@@ -188,7 +233,7 @@ static void threadA( void *pvParameters )  //Data Getting task
     //**************************************************************************
 
     if (bno08x.wasReset()) {
-      Serial.println("sensor was reset ");
+      Serial.println(F("sensor was reset "));
       setReports();
     }
 
@@ -197,7 +242,7 @@ static void threadA( void *pvParameters )  //Data Getting task
       // get a buffer
       if (xSemaphoreTake(BNO_Space_SemaphorHandle, 0) != pdTRUE) {
         BNO_error++;  // fifo full - indicate missed point
-        Serial.println("BNO buffer full");
+        Serial.println(F("BNO buffer full"));
         continue;
       }
 
@@ -295,7 +340,7 @@ static void threadA( void *pvParameters )  //Data Getting task
 //*****************************************************************
 static void threadB( void *pvParameters )  //Data Output
 {
-  SERIAL.println("Thread B: Started");
+  SERIAL.println(F("Thread B: Started"));
 
 
   //create temporary buffers to hold stuff for printing
@@ -305,19 +350,8 @@ static void threadB( void *pvParameters )  //Data Output
   const uint8_t FLT_STR_LEN = 10;
   
   char Log_Time[20] = "";
-  //char Gyro_X[FLT_STR_LEN] = ""; 
-  //char Gyro_Y[FLT_STR_LEN] = "";
-  //char Gyro_Z[FLT_STR_LEN] = "";
-  //char Accel_X[FLT_STR_LEN] = ""; 
-  //char Accel_Y[FLT_STR_LEN] = "";
-  //char Accel_Z[FLT_STR_LEN] = "";
-  //char YAW[FLT_STR_LEN] = ""; 
-  char PITCH[FLT_STR_LEN] = "";
-  char ROLL[FLT_STR_LEN] = "";
-  char HDG[FLT_STR_LEN] = "";
-  char ROT_ACC[FLT_STR_LEN] = "";
   char FRAC_SEC[FLT_STR_LEN] = "";
-
+  
   double frac_sec = 0;
   uint8_t current_sec = rtc.now().second();
 
@@ -330,14 +364,6 @@ static void threadB( void *pvParameters )  //Data Output
     strcpy(buf,""); //reset buffer
 
     strcpy(Log_Time,"");
-    //strcpy(Accel_X,""); //reset buffer
-    //strcpy(Accel_Y,""); //reset buffer
-    //strcpy(Accel_Z,""); //reset buffer
-    //strcpy(YAW,""); //reset buffer
-    strcpy(PITCH,""); //reset buffer
-    strcpy(ROLL,""); //reset buffer
-    strcpy(HDG,""); //reset buffer
-    strcpy(ROT_ACC,""); //reset buffer
     strcpy(FRAC_SEC,"");
 
     xSemaphoreTake(BNO_Data_SemaphorHandle, portMAX_DELAY);  // wait for next data record
@@ -355,45 +381,35 @@ static void threadB( void *pvParameters )  //Data Output
     //snprintf(Log_Time, 20, "%02d:%02d:%02d %02d/%02d/%02d",  bno_data->log_time.hour(),  bno_data->log_time.minute(),  bno_data->log_time.second(), bno_data->log_time.day(),  bno_data->log_time.month(),  bno_data->log_time.year()); 
     //bno_data->log_time.timestamp().toCharArray(Log_Time,20);
     time.timestamp().toCharArray(Log_Time,20);
-
-    //dtostrf(bno_data->Gyro_X, 5,2, Gyro_X);
-    //dtostrf(bno_data->Gyro_Y, 5,2, Gyro_Y);
-    //dtostrf(bno_data->Gyro_Z, 5,2, Gyro_Z);
-    //dtostrf(bno_data->LinearAccel_X, 5,2, Accel_X);
-    //dtostrf(bno_data->LinearAccel_Y, 5,2, Accel_Y);
-    //dtostrf(bno_data->LinearAccel_Z, 5,2, Accel_Z);
-    //dtostrf(yaw, 5,2, YAW);
-    dtostrf(pitch, 5,2, PITCH);
-    dtostrf(roll, 5,2, ROLL);
-    dtostrf(heading, 5,2, HDG);
-    dtostrf(rot_accuracy, 5,2, ROT_ACC);
     dtostrf(frac_sec,3,3,FRAC_SEC);
-
     strcat(buf, Log_Time);
     //strcat(buf, "\t");
     strcat(buf, FRAC_SEC+1); //skip the whole number portion of the string
     strcat(buf, "\t");
-    strcat(buf, HDG);
-    strcat(buf, "\t");
-    //strcat(buf, YAW);
-    //strcat(buf, "\t");
-    strcat(buf, PITCH);
-    strcat(buf, "\t");
-    strcat(buf, ROLL);
-    strcat(buf, "\t");
-    strcat(buf, ROT_ACC);
-    strcat(buf, "\t");
-    //strcat(buf, Accel_X);
-    //strcat(buf, "\t");
-    //strcat(buf, Accel_Y);
-    //strcat(buf, "\t");
-    //strcat(buf, Accel_Z);
-    //snprintf(buf, BUFLEN,"%d\t%d\t%d",bno_data->RawGyro_X, bno_data->RawGyro_Y, bno_data->RawGyro_Z);
 
-    SERIAL.println(buf);
+    append_float_to_log(buf,heading,5,2,LOG_SEPARATOR);
+    append_float_to_log(buf,pitch,5,2,LOG_SEPARATOR);
+    append_float_to_log(buf,roll,5,2,LOG_SEPARATOR);
+    append_float_to_log(buf,rot_accuracy,5,2,LOG_SEPARATOR);
+
+    append_float_to_log(buf,GPS.latitude,10,4, GPS.lat);
+    strcat(buf, "\t");
+    append_float_to_log(buf,GPS.longitude,10,4, GPS.lon);
+    strcat(buf, "\t");
+    append_float_to_log(buf,GPS.speed, 5, 2, LOG_SEPARATOR);
+    append_float_to_log(buf,GPS.angle, 5, 2, LOG_SEPARATOR);
+    append_float_to_log(buf,(float)GPS.fixquality, 5, 0, LOG_SEPARATOR);
 
     BNO_Tail_Q = BNO_Tail_Q < (BNO_ARRAY_SIZE-1) ? BNO_Tail_Q +1 :0;
     xSemaphoreGive(BNO_Space_SemaphorHandle);
+
+    xSemaphoreTake(GPS_SemaphorHandle,0);
+
+
+    xSemaphoreGive(GPS_SemaphorHandle); 
+
+    SERIAL.println(buf);
+    SERIAL.flush();
 
   }
 
@@ -453,7 +469,7 @@ static void GPSthread( void *pvParameters )  //Data Getting task
       // a tricky thing here is if we print the NMEA sentence, or data
       // we end up not listening and catching other sentences!
       // so be very wary if using OUTPUT_ALLDATA and trying to print out data
-      Serial.print(GPS.lastNMEA()); // this also sets the newNMEAreceived() flag to false
+      //Serial.print(GPS.lastNMEA()); // this also sets the newNMEAreceived() flag to false
       if (!GPS.parse(GPS.lastNMEA())){ // this also sets the newNMEAreceived() flag to false
         //return; // we can fail to parse a sentence in which case we should just wait for another
       }
@@ -584,10 +600,10 @@ void setup()
   // Create the threads that will be managed by the rtos
   // Sets the stack size and priority of each task
   // Also initializes a handler pointer to each task, which are important to communicate with and retrieve info from tasks
-  xTaskCreate(threadA,     "Task A",       256, NULL, tskIDLE_PRIORITY + 4, &Handle_aTask);
-  xTaskCreate(threadB,     "Task B",       512, NULL, tskIDLE_PRIORITY + 2, &Handle_bTask);
+  xTaskCreate(threadA,     "Task A",       512, NULL, tskIDLE_PRIORITY + 4, &Handle_aTask);
+  xTaskCreate(threadB,     "Task B",       512, NULL, tskIDLE_PRIORITY + 3, &Handle_bTask);
   //xTaskCreate(taskMonitor, "Task Monitor", 256, NULL, tskIDLE_PRIORITY + 1, &Handle_monitorTask);
-  xTaskCreate(GPSthread,  "GPS Task", 256, NULL, tskIDLE_PRIORITY + 3, &Handle_gpsTask);
+  xTaskCreate(GPSthread,  "GPS Task", 256, NULL, tskIDLE_PRIORITY + 2, &Handle_gpsTask);
 
   // Start the RTOS, this function will never return and will schedule the tasks.
   vTaskStartScheduler();
