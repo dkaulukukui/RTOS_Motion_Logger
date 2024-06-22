@@ -308,14 +308,15 @@ static void threadB( void *pvParameters )  //Data Output
   //char Accel_X[FLT_STR_LEN] = ""; 
   //char Accel_Y[FLT_STR_LEN] = "";
   //char Accel_Z[FLT_STR_LEN] = "";
-  char YAW[FLT_STR_LEN] = ""; 
+  //char YAW[FLT_STR_LEN] = ""; 
   char PITCH[FLT_STR_LEN] = "";
   char ROLL[FLT_STR_LEN] = "";
   char HDG[FLT_STR_LEN] = "";
   char ROT_ACC[FLT_STR_LEN] = "";
   char FRAC_SEC[FLT_STR_LEN] = "";
 
-  float frac_sec = 0;
+  double frac_sec = 0;
+  uint8_t current_sec = rtc.now().second();
 
 
   BNO_DATA *bno_data; // = &BNO_Array[BNO_Tail_Q];
@@ -329,7 +330,7 @@ static void threadB( void *pvParameters )  //Data Output
     //strcpy(Accel_X,""); //reset buffer
     //strcpy(Accel_Y,""); //reset buffer
     //strcpy(Accel_Z,""); //reset buffer
-    strcpy(YAW,""); //reset buffer
+    //strcpy(YAW,""); //reset buffer
     strcpy(PITCH,""); //reset buffer
     strcpy(ROLL,""); //reset buffer
     strcpy(HDG,""); //reset buffer
@@ -340,8 +341,14 @@ static void threadB( void *pvParameters )  //Data Output
     bno_data = &BNO_Array[BNO_Tail_Q];
 
     time = rtc.now();
-    frac_sec = millis() - last_millis;
-    last_millis = millis();
+
+    if(time.second() != current_sec) {  //reset millis delta whenever the seconds changes
+      last_millis = millis();
+      current_sec = time.second();
+    }
+    //last_millis = millis();
+
+    frac_sec = (millis() - last_millis)*0.001;
 
     //snprintf(Log_Time, 20, "%02d:%02d:%02d %02d/%02d/%02d",  bno_data->log_time.hour(),  bno_data->log_time.minute(),  bno_data->log_time.second(), bno_data->log_time.day(),  bno_data->log_time.month(),  bno_data->log_time.year()); 
     //bno_data->log_time.timestamp().toCharArray(Log_Time,20);
@@ -353,21 +360,21 @@ static void threadB( void *pvParameters )  //Data Output
     //dtostrf(bno_data->LinearAccel_X, 5,2, Accel_X);
     //dtostrf(bno_data->LinearAccel_Y, 5,2, Accel_Y);
     //dtostrf(bno_data->LinearAccel_Z, 5,2, Accel_Z);
-    dtostrf(yaw, 5,2, YAW);
+    //dtostrf(yaw, 5,2, YAW);
     dtostrf(pitch, 5,2, PITCH);
     dtostrf(roll, 5,2, ROLL);
     dtostrf(heading, 5,2, HDG);
     dtostrf(rot_accuracy, 5,2, ROT_ACC);
-    dtostrf(frac_sec,5,0,FRAC_SEC);
+    dtostrf(frac_sec,3,3,FRAC_SEC);
 
     strcat(buf, Log_Time);
-    strcat(buf, "\t");
-    strcat(buf, FRAC_SEC);
+    //strcat(buf, "\t");
+    strcat(buf, FRAC_SEC+1); //skip the whole number portion of the string
     strcat(buf, "\t");
     strcat(buf, HDG);
     strcat(buf, "\t");
-    strcat(buf, YAW);
-    strcat(buf, "\t");
+    //strcat(buf, YAW);
+    //strcat(buf, "\t");
     strcat(buf, PITCH);
     strcat(buf, "\t");
     strcat(buf, ROLL);
