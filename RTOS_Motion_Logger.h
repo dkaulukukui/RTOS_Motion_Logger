@@ -135,6 +135,53 @@ unsigned long last_millis = 0;
 // GPS defines
 //**************************************************************************
 
+#include <Adafruit_GPS.h>
+
+#define GPSSerial Serial1
+
+// Connect to the GPS on the hardware port
+Adafruit_GPS GPS(&GPSSerial);
+
+// Set GPSECHO to 'false' to turn off echoing the GPS data to the Serial console
+// Set to 'true' if you want to debug and listen to the raw GPS sentences
+#define GPSECHO false
+//#define GPSECHO true
+
+uint32_t gps_timer = millis();
+
+TaskHandle_t Handle_gpsTask;
+
+// GPS Queue
+size_t GPS_Tail_Q = 0;
+size_t GPS_Head_Q = 0;
+const size_t GPS_ARRAY_SIZE = 20;          // size of records
+int GPS_error = 0;             // count of overrun error_senses
+
+SemaphoreHandle_t GPS_SemaphorHandle;   // count of data records
+
+struct GPS_DATA {
+  u_int8_t year;
+  u_int8_t month;
+  u_int8_t day;
+  u_int8_t hour;
+  u_int8_t minute;
+  u_int8_t sec;
+  u_int16_t millisec;
+  u_int8_t fixquality;
+  uint8_t satellites;
+  uint8_t antenna_status;
+  float latitude;
+  char lat;
+  float longitude;
+  char lon;
+  float speed; //knots
+  float cog; //course over ground ref to True North
+  float altitude; 
+};      
+
+
+GPS_DATA GPS_ARRAY[GPS_ARRAY_SIZE]; //Array to hold GPS data
+
 
 
 //**************************************************************************

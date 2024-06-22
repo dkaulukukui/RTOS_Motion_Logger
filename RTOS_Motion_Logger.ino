@@ -109,8 +109,7 @@ void myDelayMsUntil(TickType_t *previousWakeTime, int ms)
 }
 
 //*****************************************************************
-// Create a thread that prints out A to the screen every two seconds
-// this task will delete its self after printing out afew messages
+// Create a thread to intialize and collect dataf rom BNO085
 //*****************************************************************
 static void threadA( void *pvParameters )  //Data Getting task
 {
@@ -184,6 +183,10 @@ static void threadA( void *pvParameters )  //Data Getting task
     //vTaskDelayUntil(&tick_count, p_sens);
     myDelayMs(100);
 
+    //**************************************************************************
+    // BNO085 data collection
+    //**************************************************************************
+
     if (bno08x.wasReset()) {
       Serial.println("sensor was reset ");
       setReports();
@@ -194,7 +197,7 @@ static void threadA( void *pvParameters )  //Data Getting task
       // get a buffer
       if (xSemaphoreTake(BNO_Space_SemaphorHandle, 0) != pdTRUE) {
         BNO_error++;  // fifo full - indicate missed point
-        Serial.println("buffer full");
+        Serial.println("BNO buffer full");
         continue;
       }
 
@@ -346,7 +349,6 @@ static void threadB( void *pvParameters )  //Data Output
       last_millis = millis();
       current_sec = time.second();
     }
-    //last_millis = millis();
 
     frac_sec = (millis() - last_millis)*0.001;
 
@@ -396,6 +398,77 @@ static void threadB( void *pvParameters )  //Data Output
   }
 
 }
+//*****************************************************************
+// Create a thread that read and parse the GPS NMEA data 
+// this task will run forever
+//*****************************************************************
+static void GPSthread( void *pvParameters )  //Data Getting task
+{
+  
+  SERIAL.println(F("GPS Thread: Started"));
+  TickType_t tick_count = xTaskGetTickCount();
+  //uint16_t p_sens = 0.5 * configTICK_RATE_HZ;  // 1 second period * 1000 ms/s
+  uint16_t p_sens = 100;
+
+  //**************************************************************************
+  // GPS setup
+  //**************************************************************************
+   // 9600 baud is the default rate for the Ultimate GPS
+  GPSSerial.begin(9600);
+
+    // uncomment this line to turn on RMC (recommended minimum) and GGA (fix data) including altitude
+  GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
+  // uncomment this line to turn on only the "minimum recommended" data
+  //GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCONLY);
+  // For parsing data, we don't suggest using anything but either RMC only or RMC+GGA since
+  // the parser doesn't care about other sentences at this time
+  // Set the update rate
+  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ); // 1 Hz update rate
+  // For the parsing code to work nicely and have time to sort thru the data, and
+  // print it out we don't suggest using anything higher than 1 Hz
+
+  // Request updates on antenna status, comment out to keep quiet
+  //GPS.sendCommand(PGCMD_ANTENNA);
+
+  //xSemaphoreGive(GPS_SemaphorHandle); //release GPS data
+
+
+  while(1) {
+    
+    //vTaskDelayUntil(&tick_count, p_sens);
+    myDelayMs(5);
+
+    xSemaphoreTake(GPS_SemaphorHandle,0); //reserve the GPS data
+
+      // read data from the GPS in the 'main loop'
+    char c = GPS.read();
+    // if you want to debug, this is a good time to do it!
+    if (GPSECHO)
+      if (c) Serial.print(c);
+    // if a sentence is received, we can check the checksum, parse it...
+
+    if (GPS.newNMEAreceived()) {
+      //Serial.println("nmea received");
+
+      // a tricky thing here is if we print the NMEA sentence, or data
+      // we end up not listening and catching other sentences!
+      // so be very wary if using OUTPUT_ALLDATA and trying to print out data
+      Serial.print(GPS.lastNMEA()); // this also sets the newNMEAreceived() flag to false
+      if (!GPS.parse(GPS.lastNMEA())){ // this also sets the newNMEAreceived() flag to false
+        //return; // we can fail to parse a sentence in which case we should just wait for another
+      }
+    }
+
+    //GPS_DATA *gps_data = &GPS_ARRAY[GPS_Head_Q]; //grab the first gps data in q
+
+    xSemaphoreGive(GPS_SemaphorHandle); //release GPS data
+    
+  }
+
+}
+
+
+
 
 //*****************************************************************
 // Task will periodically print out useful information about the tasks running
@@ -485,6 +558,7 @@ void setup()
   //**************************************************************************
   BNO_Data_SemaphorHandle = xSemaphoreCreateCounting(BNO_ARRAY_SIZE,0);
   BNO_Space_SemaphorHandle = xSemaphoreCreateCounting(BNO_ARRAY_SIZE,BNO_ARRAY_SIZE);
+  GPS_SemaphorHandle = xSemaphoreCreateCounting(GPS_ARRAY_SIZE,1);
 
   // 
   SERIAL.println("");
@@ -510,9 +584,10 @@ void setup()
   // Create the threads that will be managed by the rtos
   // Sets the stack size and priority of each task
   // Also initializes a handler pointer to each task, which are important to communicate with and retrieve info from tasks
-  xTaskCreate(threadA,     "Task A",       256, NULL, tskIDLE_PRIORITY + 3, &Handle_aTask);
+  xTaskCreate(threadA,     "Task A",       256, NULL, tskIDLE_PRIORITY + 4, &Handle_aTask);
   xTaskCreate(threadB,     "Task B",       512, NULL, tskIDLE_PRIORITY + 2, &Handle_bTask);
   //xTaskCreate(taskMonitor, "Task Monitor", 256, NULL, tskIDLE_PRIORITY + 1, &Handle_monitorTask);
+  xTaskCreate(GPSthread,  "GPS Task", 256, NULL, tskIDLE_PRIORITY + 3, &Handle_gpsTask);
 
   // Start the RTOS, this function will never return and will schedule the tasks.
   vTaskStartScheduler();
