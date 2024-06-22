@@ -10,6 +10,8 @@
 #include <FreeRTOS_SAMD21.h>
 #include <avr/dtostrf.h>   //hack to get dtostrf() to work ???? idk why???
 
+#include <RTClib.h>
+
 //**************************************************************************
 // Type Defines and Constants
 //**************************************************************************
@@ -100,6 +102,7 @@ struct BNO_DATA {
   int16_t RawMag_X;
   int16_t RawMag_Y;
   int16_t RawMag_Z;
+  DateTime log_time;
 };                          //structure of BNO data
 
 BNO_DATA BNO_Array[BNO_ARRAY_SIZE]; //Array to hold BNO data
@@ -116,3 +119,24 @@ long reportIntervalUs = 20000; // 50Hz
 // Vars to hold most recent report values
 float yaw, pitch, roll, heading, rot_accuracy;
 int acc_status;
+
+
+//**************************************************************************
+// RTC defines
+//**************************************************************************
+
+RTC_PCF8523 rtc;
+
+DateTime time;
+
+unsigned long last_millis = 0;
+
+//**************************************************************************
+// GPS defines
+//**************************************************************************
+
+
+
+//**************************************************************************
+// Display defines
+//**************************************************************************

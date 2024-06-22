@@ -2,8 +2,8 @@
 // RTOS MOTION LOGGER using BNO085
 //
 //To Do List:
-//  - get data and calculate heading
-//  - get data and calculate pitch, yaw and roll
+//  - (done) get data and calculate heading
+//  - (done) get data and calculate pitch, yaw and roll
 //  - implement SD card logging
 //  - implement GPS library
 //  - implement RTC library
@@ -20,7 +20,7 @@ void setReports(void) {
   //bno08x.enableReport(SH2_ACCELEROMETER, reportIntervalUs);
   //bno08x.enableReport(SH2_GYROSCOPE_CALIBRATED);
   //bno08x.enableReport(SH2_MAGNETIC_FIELD_CALIBRATED);
-  bno08x.enableReport(SH2_LINEAR_ACCELERATION, reportIntervalUs);
+  //bno08x.enableReport(SH2_LINEAR_ACCELERATION, reportIntervalUs);
   //bno08x.enableReport(SH2_GRAVITY);
   bno08x.enableReport(SH2_ROTATION_VECTOR, reportIntervalUs);
   //bno08x.enableReport(SH2_GEOMAGNETIC_ROTATION_VECTOR);
@@ -150,7 +150,34 @@ static void threadA( void *pvParameters )  //Data Getting task
     Serial.println(bno08x.prodIds.entry[n].swBuildNumber);
   }
 
+  //**************************************************************************
+  // RTC setup
+  //**************************************************************************
+ 
+  if (! rtc.begin()) {
+    Serial.println("Couldn't find RTC");
+    Serial.flush();
+    while (1) delay(10);
+  }
 
+  if (! rtc.isrunning()) {
+    Serial.println("RTC is NOT running, let's set the time!");
+    // When time needs to be set on a new device, or after a power loss, the
+    // following line sets the RTC to the date & time this sketch was compiled
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    // This line sets the RTC with an explicit date & time, for example to set
+    // January 21, 2014 at 3am you would call:
+    // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+  }
+
+    // When time needs to be re-set on a previously configured device, the
+  // following line sets the RTC to the date & time this sketch was compiled
+  //rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  // This line sets the RTC with an explicit date & time, for example to set
+  // January 21, 2014 at 3am you would call:
+  // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+
+  rtc.start();
 
   while(1) {
     
@@ -215,6 +242,7 @@ static void threadA( void *pvParameters )  //Data Getting task
           heading = getHeading();
           rot_accuracy = sensorValue.un.rotationVector.accuracy;
           break;
+
         case SH2_GEOMAGNETIC_ROTATION_VECTOR:
           bno_data->GeoMagVec_Real = sensorValue.un.geoMagRotationVector.real;
           bno_data->GeoMagVec_I = sensorValue.un.geoMagRotationVector.i;
@@ -246,13 +274,13 @@ static void threadA( void *pvParameters )  //Data Getting task
           break;
       }
 
+      bno_data->log_time = rtc.now();  // time data is logged
+
       BNO_error = 0;
       BNO_Head_Q = BNO_Head_Q < (BNO_ARRAY_SIZE -1) ? BNO_Head_Q +1 : 0; //advance fifo index, if true increment, else reset
       xSemaphoreGive(BNO_Data_SemaphorHandle);  //signal new data
 
     }
-
-
 
   }
 
@@ -262,7 +290,7 @@ static void threadA( void *pvParameters )  //Data Getting task
 // Create a thread that prints out B to the screen every second
 // this task will run forever
 //*****************************************************************
-static void threadB( void *pvParameters )  //Data printing task
+static void threadB( void *pvParameters )  //Data Output
 {
   SERIAL.println("Thread B: Started");
 
@@ -273,48 +301,69 @@ static void threadB( void *pvParameters )  //Data printing task
 
   const uint8_t FLT_STR_LEN = 10;
   
+  char Log_Time[20] = "";
   //char Gyro_X[FLT_STR_LEN] = ""; 
   //char Gyro_Y[FLT_STR_LEN] = "";
   //char Gyro_Z[FLT_STR_LEN] = "";
-  char Accel_X[FLT_STR_LEN] = ""; 
-  char Accel_Y[FLT_STR_LEN] = "";
-  char Accel_Z[FLT_STR_LEN] = "";
+  //char Accel_X[FLT_STR_LEN] = ""; 
+  //char Accel_Y[FLT_STR_LEN] = "";
+  //char Accel_Z[FLT_STR_LEN] = "";
   char YAW[FLT_STR_LEN] = ""; 
   char PITCH[FLT_STR_LEN] = "";
   char ROLL[FLT_STR_LEN] = "";
   char HDG[FLT_STR_LEN] = "";
   char ROT_ACC[FLT_STR_LEN] = "";
+  char FRAC_SEC[FLT_STR_LEN] = "";
 
-  BNO_DATA *bno_data= &BNO_Array[BNO_Tail_Q];
+  float frac_sec = 0;
+
+
+  BNO_DATA *bno_data; // = &BNO_Array[BNO_Tail_Q];
 
   while(1) { 
 
     //clear all temp buffers
     strcpy(buf,""); //reset buffer
-    strcpy(Accel_X,""); //reset buffer
-    strcpy(Accel_Y,""); //reset buffer
-    strcpy(Accel_Z,""); //reset buffer
+
+    strcpy(Log_Time,"");
+    //strcpy(Accel_X,""); //reset buffer
+    //strcpy(Accel_Y,""); //reset buffer
+    //strcpy(Accel_Z,""); //reset buffer
     strcpy(YAW,""); //reset buffer
     strcpy(PITCH,""); //reset buffer
     strcpy(ROLL,""); //reset buffer
     strcpy(HDG,""); //reset buffer
     strcpy(ROT_ACC,""); //reset buffer
+    strcpy(FRAC_SEC,"");
 
     xSemaphoreTake(BNO_Data_SemaphorHandle, portMAX_DELAY);  // wait for next data record
     bno_data = &BNO_Array[BNO_Tail_Q];
 
+    time = rtc.now();
+    frac_sec = millis() - last_millis;
+    last_millis = millis();
+
+    //snprintf(Log_Time, 20, "%02d:%02d:%02d %02d/%02d/%02d",  bno_data->log_time.hour(),  bno_data->log_time.minute(),  bno_data->log_time.second(), bno_data->log_time.day(),  bno_data->log_time.month(),  bno_data->log_time.year()); 
+    //bno_data->log_time.timestamp().toCharArray(Log_Time,20);
+    time.timestamp().toCharArray(Log_Time,20);
+
     //dtostrf(bno_data->Gyro_X, 5,2, Gyro_X);
     //dtostrf(bno_data->Gyro_Y, 5,2, Gyro_Y);
     //dtostrf(bno_data->Gyro_Z, 5,2, Gyro_Z);
-    dtostrf(bno_data->LinearAccel_X, 5,2, Accel_X);
-    dtostrf(bno_data->LinearAccel_Y, 5,2, Accel_Y);
-    dtostrf(bno_data->LinearAccel_Z, 5,2, Accel_Z);
+    //dtostrf(bno_data->LinearAccel_X, 5,2, Accel_X);
+    //dtostrf(bno_data->LinearAccel_Y, 5,2, Accel_Y);
+    //dtostrf(bno_data->LinearAccel_Z, 5,2, Accel_Z);
     dtostrf(yaw, 5,2, YAW);
     dtostrf(pitch, 5,2, PITCH);
     dtostrf(roll, 5,2, ROLL);
     dtostrf(heading, 5,2, HDG);
     dtostrf(rot_accuracy, 5,2, ROT_ACC);
+    dtostrf(frac_sec,5,0,FRAC_SEC);
 
+    strcat(buf, Log_Time);
+    strcat(buf, "\t");
+    strcat(buf, FRAC_SEC);
+    strcat(buf, "\t");
     strcat(buf, HDG);
     strcat(buf, "\t");
     strcat(buf, YAW);
@@ -325,11 +374,11 @@ static void threadB( void *pvParameters )  //Data printing task
     strcat(buf, "\t");
     strcat(buf, ROT_ACC);
     strcat(buf, "\t");
-    strcat(buf, Accel_X);
-    strcat(buf, "\t");
-    strcat(buf, Accel_Y);
-    strcat(buf, "\t");
-    strcat(buf, Accel_Z);
+    //strcat(buf, Accel_X);
+    //strcat(buf, "\t");
+    //strcat(buf, Accel_Y);
+    //strcat(buf, "\t");
+    //strcat(buf, Accel_Z);
     //snprintf(buf, BUFLEN,"%d\t%d\t%d",bno_data->RawGyro_X, bno_data->RawGyro_Y, bno_data->RawGyro_Z);
 
     SERIAL.println(buf);
@@ -455,7 +504,7 @@ void setup()
   // Sets the stack size and priority of each task
   // Also initializes a handler pointer to each task, which are important to communicate with and retrieve info from tasks
   xTaskCreate(threadA,     "Task A",       256, NULL, tskIDLE_PRIORITY + 3, &Handle_aTask);
-  xTaskCreate(threadB,     "Task B",       256, NULL, tskIDLE_PRIORITY + 2, &Handle_bTask);
+  xTaskCreate(threadB,     "Task B",       512, NULL, tskIDLE_PRIORITY + 2, &Handle_bTask);
   //xTaskCreate(taskMonitor, "Task Monitor", 256, NULL, tskIDLE_PRIORITY + 1, &Handle_monitorTask);
 
   // Start the RTOS, this function will never return and will schedule the tasks.
