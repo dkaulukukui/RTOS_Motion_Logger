@@ -153,6 +153,24 @@ void append_float_to_log(char* s, float f, int length, int frac, char seperator)
   strcat(s,sep_buffer);
 }
 
+// blink out an error code
+void error(uint8_t errnum) {
+  while(1) {
+    uint8_t i;
+    for (i=0; i<errnum; i++) {
+      digitalWrite(ERROR_LED_PIN, HIGH);
+      delay(100);
+      digitalWrite(ERROR_LED_PIN, LOW);
+      delay(100);
+      yield();
+    }
+    for (i=errnum; i<10; i++) {
+      delay(200);
+      yield();
+    }
+  }
+}
+
 //*****************************************************************
 // Create a thread to intialize and collect dataf rom BNO085
 //*****************************************************************
@@ -178,6 +196,7 @@ static void threadA( void *pvParameters )  //Data Getting task
     //while (1) {
       delay(100);
     //}
+    error(3);
   }
   Serial.println(F("BNO08x Found!"));
 
@@ -201,7 +220,7 @@ static void threadA( void *pvParameters )  //Data Getting task
   if (! rtc.begin()) {
     Serial.println(F("Couldn't find RTC"));
     Serial.flush();
-    while (1) delay(10);
+    //while (1) delay(10);
   }
 
   if (! rtc.isrunning()) {
@@ -408,8 +427,28 @@ static void threadB( void *pvParameters )  //Data Output
 
     xSemaphoreGive(GPS_SemaphorHandle); 
 
-    SERIAL.println(buf);
-    SERIAL.flush();
+    #ifdef SERIAL_LOGGING 
+      SERIAL.println(buf);
+      //SERIAL.flush();
+    #endif
+
+    #ifdef SD_LOGGING
+      // open the file. note that only one file can be open at a time,
+      // so you have to close this one before opening another.
+      File dataFile = SD.open(filename, FILE_WRITE); 
+
+        // if the file is available, write to it:
+      if (dataFile) {
+        dataFile.println(buf);
+        dataFile.close();
+        // print to the serial port too:
+      // Serial.println(dataString);
+      }
+      // if the file isn't open, pop up an error:
+      else {
+        Serial.println("error opening datalog.txt");
+      }
+    #endif
 
   }
 
@@ -566,10 +605,33 @@ void taskMonitor(void *pvParameters)
 void setup() 
 {
 
-  SERIAL.begin(115200);
+  #ifdef SERIAL_LOGGING
+    SERIAL.begin(115200);
 
-  delay(1000); // prevents usb driver crash on startup, do not omit this
-  while (!SERIAL) ;  // Wait for serial terminal to open port before starting program
+    delay(1000); // prevents usb driver crash on startup, do not omit this
+    while (!SERIAL) ;  // Wait for serial terminal to open port before starting program
+  #endif
+
+  #ifdef SD_LOGGING
+  //*************SD Card Setup**************** */
+
+    // set up variables using the SD utility library functions:
+
+    time = rtc.now();
+    time.toString(filename);
+    Serial.println(filename);
+
+      // see if the card is present and can be initialized:
+    if (!SD.begin(chipSelect)) {
+      Serial.println(F("Card failed, or not present"));
+      // don't do anything more:
+      error(2);
+      //while (1);
+    }
+    Serial.println(F("card initialized."));
+  
+
+  #endif
 
   //**************************************************************************
   BNO_Data_SemaphorHandle = xSemaphoreCreateCounting(BNO_ARRAY_SIZE,0);

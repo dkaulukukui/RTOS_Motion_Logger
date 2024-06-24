@@ -1,12 +1,3 @@
-//**************************************************************************
-// FreeRtos on Samd21
-// By Scott Briscoe
-//
-// Project is a simple example of how to get FreeRtos running on a SamD21 processor
-// Project can be used as a template to build your projects off of as well
-//
-//**************************************************************************
-
 #include <FreeRTOS_SAMD21.h>
 #include <avr/dtostrf.h>   //hack to get dtostrf() to work ???? idk why???
 
@@ -26,12 +17,27 @@
 //#define SERIAL          SerialUSB //Sparkfun Samd21 Boards
 #define SERIAL          Serial //Adafruit, other Samd21 Boards
 
+#define SERIAL_LOGGING
+
+//#define SD_LOGGING
+
+#include <SPI.h>
+#include <SD.h>
+
+const int chipSelect = 10;
+
+char filename[20] =  "DD-hh-mm.csv";
+//char filename[20] =  "test2.csv";
+
+
 //**************************************************************************
 // global variables
 //**************************************************************************
 TaskHandle_t Handle_aTask;
 TaskHandle_t Handle_bTask;
 TaskHandle_t Handle_monitorTask;
+
+const char LOG_SEPARATOR = '\t';  //character to use for serial logging seperation
 
 //**************************************************************************
 // Can use these function for RTOS delays
@@ -131,6 +137,8 @@ DateTime time;
 
 unsigned long last_millis = 0;
 
+//char date_format[13] = "DD-hh-mm.csv";
+
 //**************************************************************************
 // GPS defines
 //**************************************************************************
@@ -187,5 +195,3 @@ GPS_DATA GPS_ARRAY[GPS_ARRAY_SIZE]; //Array to hold GPS data
 //**************************************************************************
 // Display defines
 //**************************************************************************
-
-const char LOG_SEPARATOR = '\t';
