@@ -482,7 +482,7 @@ static void threadB( void *pvParameters )  //Data Output
       strcat(buf, "\t");
       append_float_to_log(buf,GPS.speed, 5, 2, LOG_SEPARATOR);
       append_float_to_log(buf,GPS.angle, 5, 2, LOG_SEPARATOR);
-      append_float_to_log(buf,(float)GPS.fixquality, 5, 0, LOG_SEPARATOR);
+      //append_float_to_log(buf,(float)GPS.fixquality, 5, 0, LOG_SEPARATOR);
 
       xSemaphoreGive(GPS_SemaphorHandle); 
 
