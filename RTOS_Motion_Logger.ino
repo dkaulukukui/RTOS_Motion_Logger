@@ -20,7 +20,7 @@ void setReports(void) {
   //bno08x.enableReport(SH2_ACCELEROMETER, reportIntervalUs);
   //bno08x.enableReport(SH2_GYROSCOPE_CALIBRATED);
   //bno08x.enableReport(SH2_MAGNETIC_FIELD_CALIBRATED);
-  //bno08x.enableReport(SH2_LINEAR_ACCELERATION, reportIntervalUs);
+  bno08x.enableReport(SH2_LINEAR_ACCELERATION, reportIntervalUs*2);
   //bno08x.enableReport(SH2_GRAVITY);
   bno08x.enableReport(SH2_ROTATION_VECTOR, reportIntervalUs);
   //bno08x.enableReport(SH2_GEOMAGNETIC_ROTATION_VECTOR);
@@ -418,12 +418,48 @@ static void threadB( void *pvParameters )  //Data Output
       //while (1);
     }
 
-    /*if(! SDcard.init(SPI_HALF_SPEED, chipSelect)) {
-      Serial.println(F("Card failed, or not present"));
-      error(6);
-    }*/
-    
     Serial.println(F("card initialized."));
+
+    //build and log file header
+    strcat(buf, "Time(ISO+millis)");
+    strcat(buf, "\t");
+    strcat(buf, "HDG");
+    strcat(buf, "\t");
+    strcat(buf, "Pitch");
+    strcat(buf, "\t");
+    strcat(buf, "Roll");
+    strcat(buf, "\t");
+    strcat(buf, "ROT Accuracy");
+    strcat(buf, "\t");
+    strcat(buf, "Accel X (right)");
+    strcat(buf, "\t");
+    strcat(buf, "Accel Y (fwd)");
+    strcat(buf, "\t");
+    strcat(buf, "Accel Z (up)");
+    strcat(buf, "\t");
+    strcat(buf, "LAT");
+    strcat(buf, "\t");
+    strcat(buf, "LON");
+    strcat(buf, "\t");
+    strcat(buf, "Spd(Kts)");
+    strcat(buf, "\t");
+    strcat(buf, "COG");
+    strcat(buf, "\t");
+
+    File dataFile = SD.open(filename, FILE_WRITE); 
+
+      // if the file is available, write to it:
+    if (dataFile) {
+      dataFile.println(buf);
+      dataFile.flush();
+      dataFile.close();
+      // print to the serial port too:
+      Serial.println(buf);
+    }
+    // if the file isn't open, pop up an error:
+    else {
+      Serial.println(F("error opening datalog file"));
+    }
 
   #endif
 
@@ -466,6 +502,9 @@ static void threadB( void *pvParameters )  //Data Output
       append_float_to_log(buf,pitch,5,2,LOG_SEPARATOR);
       append_float_to_log(buf,roll,5,2,LOG_SEPARATOR);
       append_float_to_log(buf,rot_accuracy,5,2,LOG_SEPARATOR);
+      append_float_to_log(buf,bno_data->LinearAccel_X,5,2,LOG_SEPARATOR);
+      append_float_to_log(buf,bno_data->LinearAccel_Y,5,2,LOG_SEPARATOR);
+      append_float_to_log(buf,bno_data->LinearAccel_Z,5,2,LOG_SEPARATOR);
 
       BNO_Tail_Q = BNO_Tail_Q < (BNO_ARRAY_SIZE-1) ? BNO_Tail_Q +1 :0;
       xSemaphoreGive(BNO_Space_SemaphorHandle);
@@ -508,7 +547,7 @@ static void threadB( void *pvParameters )  //Data Output
       }
       // if the file isn't open, pop up an error:
       else {
-        Serial.println("error opening datalog.txt");
+        Serial.println(F("error opening datalog file"));
       }
     #endif
 
@@ -527,8 +566,8 @@ static void GPSthread( void *pvParameters )  //Data Getting task
   
   SERIAL.println(F("GPS Thread: Started"));
   TickType_t tick_count = xTaskGetTickCount();
-  //uint16_t p_sens = 0.5 * configTICK_RATE_HZ;  // 1 second period * 1000 ms/s
-  uint16_t p_sens = 100;
+  uint16_t p_sens = 0.01 * configTICK_RATE_HZ;  // 1 second period * 1000 ms/s
+  //uint16_t p_sens = 100;
 
   //**************************************************************************
   // GPS setup
@@ -537,9 +576,9 @@ static void GPSthread( void *pvParameters )  //Data Getting task
   GPSSerial.begin(9600);
 
     // uncomment this line to turn on RMC (recommended minimum) and GGA (fix data) including altitude
-  GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
+  //GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
   // uncomment this line to turn on only the "minimum recommended" data
-  //GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCONLY);
+  GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCONLY);
   // For parsing data, we don't suggest using anything but either RMC only or RMC+GGA since
   // the parser doesn't care about other sentences at this time
   // Set the update rate
@@ -555,7 +594,7 @@ static void GPSthread( void *pvParameters )  //Data Getting task
 
   while(1) {
     
-    //vTaskDelayUntil(&tick_count, p_sens);
+    vTaskDelayUntil(&tick_count, p_sens);
     //myDelayMs(100);
 
     xSemaphoreTake(GPS_SemaphorHandle,0); //reserve the GPS data
@@ -653,9 +692,9 @@ void taskMonitor(void *pvParameters)
       SERIAL.print(F("Task Monitor: "));
       SERIAL.println(measurement);
 
-      //measurement = uxTaskGetStackHighWaterMark( Handle_gpsTask );
-      //SERIAL.print(F("GPS Stack: "));
-      //SERIAL.println(measurement);
+      measurement = uxTaskGetStackHighWaterMark( Handle_gpsTask );
+      SERIAL.print(F("GPS Stack: "));
+      SERIAL.println(measurement);
 
       SERIAL.println(F("****************************************************"));
       SERIAL.flush();
