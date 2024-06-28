@@ -5,8 +5,8 @@
 //  - (done) get data and calculate heading
 //  - (done) get data and calculate pitch, yaw and roll
 //  - implement SD card logging
-//  - implement GPS library
-//  - implement RTC library
+//  - (done) implement GPS library
+//  - (done) implement RTC library
 //  - implement OLED display
 //  - figure out calibration procedure for BNO085
 //**************************************************************************
@@ -30,7 +30,7 @@ void setReports(void) {
   //bno08x.enableReport(SH2_RAW_MAGNETOMETER);
 }
 
-//**************************************************************************
+//***********MATH STUFF***************************************************************
 void quaternionToEuler(float qr, float qi, float qj, float qk, euler_t* ypr, bool degrees = false) {
 
     float sqr = sq(qr);
@@ -85,14 +85,17 @@ float getHeading() {
   // South is either 180 or -180
   // Returns heading in True 0-359.9
 
+  // Need to adjust for magnetic deviation
+
   if (yaw > 0 && yaw < 180) { // Quadrants III, IV
-    return (360 - yaw);
+    return (360 - yaw - MAGNETIC_DECLINATION);
   } else {                      // Quadrant I and II
-    return -(yaw);
+    return (-(yaw)-MAGNETIC_DECLINATION);
   } 
 }
+
 //***********************GPS Functions*********************** */
-void printGPS(){
+/*void printGPS(){
     Serial.print(F("\nTime: "));
     if (GPS.hour < 10) { Serial.print('0'); }
     Serial.print(GPS.hour, DEC); Serial.print(':');
@@ -125,7 +128,12 @@ void printGPS(){
     }
 }
 
-//**********Utility Functions****************************************************************
+*/
+
+// Can use these function for RTOS delays
+// Takes into account processor speed
+// Use these instead of delay(...) in rtos tasks
+
 void myDelayUs(int us)
 {
   vTaskDelay( us / portTICK_PERIOD_US );  
@@ -140,6 +148,9 @@ void myDelayMsUntil(TickType_t *previousWakeTime, int ms)
 {
   vTaskDelayUntil( previousWakeTime, (ms * 1000) / portTICK_PERIOD_US );  
 }
+
+
+//**********Utility Functions****************************************************************
 
 void append_float_to_log(char* s, float f, int length, int frac, char seperator){
   int len = strlen(s);
@@ -179,8 +190,8 @@ static void threadA( void *pvParameters )  //Data Getting task
   
   SERIAL.println(F("Thread A: Started"));
   TickType_t tick_count = xTaskGetTickCount();
-  //uint16_t p_sens = 0.5 * configTICK_RATE_HZ;  // 1 second period * 1000 ms/s
-  uint16_t p_sens = 100;
+  uint16_t p_sens = 0.1 * configTICK_RATE_HZ;  // 1 second period * 1000 ms/s == 10Hz
+  //uint16_t p_sens = 100;
 
     //**************************************************************************
   // BNO085 setup
@@ -196,7 +207,7 @@ static void threadA( void *pvParameters )  //Data Getting task
     //while (1) {
       delay(100);
     //}
-    error(3);
+    //error(5);
   }
   Serial.println(F("BNO08x Found!"));
 
@@ -244,8 +255,8 @@ static void threadA( void *pvParameters )  //Data Getting task
 
   while(1) {
     
-    //vTaskDelayUntil(&tick_count, p_sens);
-    myDelayMs(100);
+    vTaskDelayUntil(&tick_count, p_sens);
+    //myDelayMs(100);
 
     //**************************************************************************
     // BNO085 data collection
@@ -271,6 +282,7 @@ static void threadA( void *pvParameters )  //Data Getting task
 
       switch (sensorValue.sensorId) {
 
+        /*
         case SH2_ACCELEROMETER:
           bno_data->Accel_X = sensorValue.un.accelerometer.x;
           bno_data->Accel_Y = sensorValue.un.accelerometer.y;
@@ -286,16 +298,20 @@ static void threadA( void *pvParameters )  //Data Getting task
           bno_data->Mag_Y = sensorValue.un.magneticField.y;
           bno_data->Mag_Z = sensorValue.un.magneticField.z;
           break;
+
+          */
         case SH2_LINEAR_ACCELERATION:
           bno_data->LinearAccel_X = sensorValue.un.linearAcceleration.x;
           bno_data->LinearAccel_Y = sensorValue.un.linearAcceleration.y;
           bno_data->LinearAccel_Z = sensorValue.un.linearAcceleration.z;
           break;
+          /*
         case SH2_GRAVITY:
           bno_data->Grav_X = sensorValue.un.gravity.x;
           bno_data->Grav_Y = sensorValue.un.gravity.y;
           bno_data->Grav_Z = sensorValue.un.gravity.z;
           break;
+          */
         case SH2_ROTATION_VECTOR:
           bno_data->RotVec_Real = sensorValue.un.rotationVector.real;
           bno_data->RotVec_I = sensorValue.un.rotationVector.i;
@@ -309,7 +325,7 @@ static void threadA( void *pvParameters )  //Data Getting task
           heading = getHeading();
           rot_accuracy = sensorValue.un.rotationVector.accuracy;
           break;
-
+        /*
         case SH2_GEOMAGNETIC_ROTATION_VECTOR:
           bno_data->GeoMagVec_Real = sensorValue.un.geoMagRotationVector.real;
           bno_data->GeoMagVec_I = sensorValue.un.geoMagRotationVector.i;
@@ -339,6 +355,7 @@ static void threadA( void *pvParameters )  //Data Getting task
           bno_data->RawMag_Y = sensorValue.un.rawMagnetometer.y;
           bno_data->RawMag_Z = sensorValue.un.rawMagnetometer.z;
           break;
+          */
       }
 
       bno_data->log_time = rtc.now();  // time data is logged
@@ -367,69 +384,113 @@ static void threadB( void *pvParameters )  //Data Output
   char buf[BUFLEN] = "";
 
   const uint8_t FLT_STR_LEN = 10;
-  
-  char Log_Time[20] = "";
-  char FRAC_SEC[FLT_STR_LEN] = "";
-  
-  double frac_sec = 0;
-  uint8_t current_sec = rtc.now().second();
 
+  #ifdef RTC_ON
+  
+    char Log_Time[20] = "";
+    char FRAC_SEC[FLT_STR_LEN] = "";
+    
+    double frac_sec = 0;
+    uint8_t current_sec = rtc.now().second();
 
-  BNO_DATA *bno_data; // = &BNO_Array[BNO_Tail_Q];
+  #endif
+
+  #ifdef BNO085_ON
+
+    BNO_DATA *bno_data; // = &BNO_Array[BNO_Tail_Q];
+
+  #endif
+
+  #ifdef SD_LOGGING
+  //*************SD Card Setup**************** */
+
+    // set up variables using the SD utility library functions:
+
+    time = rtc.now();
+    time.toString(filename);
+    Serial.println(filename);
+
+      // see if the card is present and can be initialized:
+    if (!SD.begin(SD_chipSelect)) {
+      Serial.println(F("Card failed, or not present"));
+      // don't do anything more:
+      error(6);
+      //while (1);
+    }
+
+    /*if(! SDcard.init(SPI_HALF_SPEED, chipSelect)) {
+      Serial.println(F("Card failed, or not present"));
+      error(6);
+    }*/
+    
+    Serial.println(F("card initialized."));
+
+  #endif
 
   while(1) { 
 
     //clear all temp buffers
     strcpy(buf,""); //reset buffer
 
-    strcpy(Log_Time,"");
-    strcpy(FRAC_SEC,"");
+    #ifdef RTC_ON
+      strcpy(Log_Time,"");
+      strcpy(FRAC_SEC,"");
 
-    xSemaphoreTake(BNO_Data_SemaphorHandle, portMAX_DELAY);  // wait for next data record
-    bno_data = &BNO_Array[BNO_Tail_Q];
+      time = rtc.now();
 
-    time = rtc.now();
+      if(time.second() != current_sec) {  //reset millis delta whenever the seconds changes
+        last_millis = millis();
+        current_sec = time.second();
+      }
 
-    if(time.second() != current_sec) {  //reset millis delta whenever the seconds changes
-      last_millis = millis();
-      current_sec = time.second();
-    }
+      frac_sec = (millis() - last_millis)*0.001;
 
-    frac_sec = (millis() - last_millis)*0.001;
+      //snprintf(Log_Time, 20, "%02d:%02d:%02d %02d/%02d/%02d",  bno_data->log_time.hour(),  bno_data->log_time.minute(),  bno_data->log_time.second(), bno_data->log_time.day(),  bno_data->log_time.month(),  bno_data->log_time.year()); 
+      //bno_data->log_time.timestamp().toCharArray(Log_Time,20);
+      time.timestamp().toCharArray(Log_Time,20);
+      dtostrf(frac_sec,3,3,FRAC_SEC);
+      strcat(buf, Log_Time);
+      //strcat(buf, "\t");
+      strcat(buf, FRAC_SEC+1); //skip the whole number portion of the string
+      strcat(buf, "\t");
 
-    //snprintf(Log_Time, 20, "%02d:%02d:%02d %02d/%02d/%02d",  bno_data->log_time.hour(),  bno_data->log_time.minute(),  bno_data->log_time.second(), bno_data->log_time.day(),  bno_data->log_time.month(),  bno_data->log_time.year()); 
-    //bno_data->log_time.timestamp().toCharArray(Log_Time,20);
-    time.timestamp().toCharArray(Log_Time,20);
-    dtostrf(frac_sec,3,3,FRAC_SEC);
-    strcat(buf, Log_Time);
-    //strcat(buf, "\t");
-    strcat(buf, FRAC_SEC+1); //skip the whole number portion of the string
-    strcat(buf, "\t");
-
-    append_float_to_log(buf,heading,5,2,LOG_SEPARATOR);
-    append_float_to_log(buf,pitch,5,2,LOG_SEPARATOR);
-    append_float_to_log(buf,roll,5,2,LOG_SEPARATOR);
-    append_float_to_log(buf,rot_accuracy,5,2,LOG_SEPARATOR);
-
-    append_float_to_log(buf,GPS.latitude,10,4, GPS.lat);
-    strcat(buf, "\t");
-    append_float_to_log(buf,GPS.longitude,10,4, GPS.lon);
-    strcat(buf, "\t");
-    append_float_to_log(buf,GPS.speed, 5, 2, LOG_SEPARATOR);
-    append_float_to_log(buf,GPS.angle, 5, 2, LOG_SEPARATOR);
-    append_float_to_log(buf,(float)GPS.fixquality, 5, 0, LOG_SEPARATOR);
-
-    BNO_Tail_Q = BNO_Tail_Q < (BNO_ARRAY_SIZE-1) ? BNO_Tail_Q +1 :0;
-    xSemaphoreGive(BNO_Space_SemaphorHandle);
-
-    xSemaphoreTake(GPS_SemaphorHandle,0);
+    #endif
 
 
-    xSemaphoreGive(GPS_SemaphorHandle); 
+    #ifdef BNO085_ON
+    
+      xSemaphoreTake(BNO_Data_SemaphorHandle, portMAX_DELAY);  // wait for next data record
+      bno_data = &BNO_Array[BNO_Tail_Q];
+
+      append_float_to_log(buf,heading,5,2,LOG_SEPARATOR);
+      append_float_to_log(buf,pitch,5,2,LOG_SEPARATOR);
+      append_float_to_log(buf,roll,5,2,LOG_SEPARATOR);
+      append_float_to_log(buf,rot_accuracy,5,2,LOG_SEPARATOR);
+
+      BNO_Tail_Q = BNO_Tail_Q < (BNO_ARRAY_SIZE-1) ? BNO_Tail_Q +1 :0;
+      xSemaphoreGive(BNO_Space_SemaphorHandle);
+
+    #endif
+
+    #ifdef GPS_ON
+
+      xSemaphoreTake(GPS_SemaphorHandle,0);
+
+      append_float_to_log(buf,GPS.latitude,10,4, GPS.lat);
+      strcat(buf, "\t");
+      append_float_to_log(buf,GPS.longitude,10,4, GPS.lon);
+      strcat(buf, "\t");
+      append_float_to_log(buf,GPS.speed, 5, 2, LOG_SEPARATOR);
+      append_float_to_log(buf,GPS.angle, 5, 2, LOG_SEPARATOR);
+      append_float_to_log(buf,(float)GPS.fixquality, 5, 0, LOG_SEPARATOR);
+
+      xSemaphoreGive(GPS_SemaphorHandle); 
+
+    #endif
 
     #ifdef SERIAL_LOGGING 
       SERIAL.println(buf);
-      //SERIAL.flush();
+      SERIAL.flush();
     #endif
 
     #ifdef SD_LOGGING
@@ -440,6 +501,7 @@ static void threadB( void *pvParameters )  //Data Output
         // if the file is available, write to it:
       if (dataFile) {
         dataFile.println(buf);
+        dataFile.flush();
         dataFile.close();
         // print to the serial port too:
       // Serial.println(dataString);
@@ -457,6 +519,9 @@ static void threadB( void *pvParameters )  //Data Output
 // Create a thread that read and parse the GPS NMEA data 
 // this task will run forever
 //*****************************************************************
+
+#ifdef GPS_ON
+
 static void GPSthread( void *pvParameters )  //Data Getting task
 {
   
@@ -491,7 +556,7 @@ static void GPSthread( void *pvParameters )  //Data Getting task
   while(1) {
     
     //vTaskDelayUntil(&tick_count, p_sens);
-    myDelayMs(5);
+    //myDelayMs(100);
 
     xSemaphoreTake(GPS_SemaphorHandle,0); //reserve the GPS data
 
@@ -522,6 +587,7 @@ static void GPSthread( void *pvParameters )  //Data Getting task
 
 }
 
+#endif
 
 
 
@@ -538,63 +604,67 @@ void taskMonitor(void *pvParameters)
     int x;
     int measurement;
     
-    SERIAL.println("Task Monitor: Started");
+    SERIAL.println(F("Task Monitor: Started"));
 
     // run this task afew times before exiting forever
     while(1) {
     	myDelayMs(10000); // print every 10 seconds
 
     	SERIAL.flush();
-		  SERIAL.println("");			 
-    	SERIAL.println("****************************************************");
-    	SERIAL.print("Free Heap: ");
+		  SERIAL.println(F(""));			 
+    	SERIAL.println(F("****************************************************"));
+    	SERIAL.print(F("Free Heap: "));
     	SERIAL.print(xPortGetFreeHeapSize());
-    	SERIAL.println(" bytes");
+    	SERIAL.println(F(" bytes"));
 
-    	SERIAL.print("Min Heap: ");
+    	SERIAL.print(F("Min Heap: "));
     	SERIAL.print(xPortGetMinimumEverFreeHeapSize());
-    	SERIAL.println(" bytes");
+    	SERIAL.println(F(" bytes"));
     	SERIAL.flush();
 
-    	SERIAL.println("****************************************************");
-    	SERIAL.println("Task             ABS             %Util");
-    	SERIAL.println("****************************************************");
+    	SERIAL.println(F("****************************************************"));
+    	SERIAL.println(F("Task             ABS             %Util"));
+    	SERIAL.println(F("****************************************************"));
 
     	vTaskGetRunTimeStats(ptrTaskList); //save stats to char array
     	SERIAL.println(ptrTaskList); //prints out already formatted stats
     	SERIAL.flush();
 
-      SERIAL.println("****************************************************");
-      SERIAL.println("Task            State   Prio    Stack   Num     Core");
-      SERIAL.println("****************************************************");
+      SERIAL.println(F("****************************************************"));
+      SERIAL.println(F("Task            State   Prio    Stack   Num     Core"));
+      SERIAL.println(F("****************************************************"));
 
       vTaskList(ptrTaskList); //save stats to char array
       SERIAL.println(ptrTaskList); //prints out already formatted stats
       SERIAL.flush();
 
-      SERIAL.println("****************************************************");
-      SERIAL.println("[Stacks Free Bytes Remaining] ");
+      SERIAL.println(F("****************************************************"));
+      SERIAL.println(F("[Stacks Free Bytes Remaining] "));
 
       measurement = uxTaskGetStackHighWaterMark( Handle_aTask );
-      SERIAL.print("Thread A: ");
+      SERIAL.print(F("Thread A: "));
       SERIAL.println(measurement);
 
       measurement = uxTaskGetStackHighWaterMark( Handle_bTask );
-      SERIAL.print("Thread B: ");
+      SERIAL.print(F("Thread B: "));
       SERIAL.println(measurement);
 
       measurement = uxTaskGetStackHighWaterMark( Handle_monitorTask );
-      SERIAL.print("Monitor Stack: ");
+      SERIAL.print(F("Task Monitor: "));
       SERIAL.println(measurement);
 
-      SERIAL.println("****************************************************");
+      //measurement = uxTaskGetStackHighWaterMark( Handle_gpsTask );
+      //SERIAL.print(F("GPS Stack: "));
+      //SERIAL.println(measurement);
+
+      SERIAL.println(F("****************************************************"));
       SERIAL.flush();
 
     }
 
     // delete ourselves.
     // Have to call this or the system crashes when you reach the end bracket and then get scheduled.
-    SERIAL.println("Task Monitor: Deleting");
+    SERIAL.println(F("Task Monitor: Deleting"));
     vTaskDelete( NULL );
 
 }
@@ -605,6 +675,9 @@ void taskMonitor(void *pvParameters)
 void setup() 
 {
 
+  //digitalWrite(WIFI_CS_PIN,HIGH);  //disable Wifi module SPI
+  //digitalWrite(SD_chipSelect, LOW);
+
   #ifdef SERIAL_LOGGING
     SERIAL.begin(115200);
 
@@ -612,37 +685,19 @@ void setup()
     while (!SERIAL) ;  // Wait for serial terminal to open port before starting program
   #endif
 
-  #ifdef SD_LOGGING
-  //*************SD Card Setup**************** */
-
-    // set up variables using the SD utility library functions:
-
-    time = rtc.now();
-    time.toString(filename);
-    Serial.println(filename);
-
-      // see if the card is present and can be initialized:
-    if (!SD.begin(chipSelect)) {
-      Serial.println(F("Card failed, or not present"));
-      // don't do anything more:
-      error(2);
-      //while (1);
-    }
-    Serial.println(F("card initialized."));
-  
-
-  #endif
-
   //**************************************************************************
   BNO_Data_SemaphorHandle = xSemaphoreCreateCounting(BNO_ARRAY_SIZE,0);
   BNO_Space_SemaphorHandle = xSemaphoreCreateCounting(BNO_ARRAY_SIZE,BNO_ARRAY_SIZE);
-  GPS_SemaphorHandle = xSemaphoreCreateCounting(GPS_ARRAY_SIZE,1);
+
+  #ifdef GPS_ON
+    GPS_SemaphorHandle = xSemaphoreCreateCounting(GPS_ARRAY_SIZE,1);
+  #endif
 
   // 
-  SERIAL.println("");
-  SERIAL.println("******************************");
-  SERIAL.println("        Program start         ");
-  SERIAL.println("******************************");
+  SERIAL.println(F(""));
+  SERIAL.println(F("******************************"));
+  SERIAL.println(F("        Program start         "));
+  SERIAL.println(F("******************************"));
   SERIAL.flush();
 
   // Set the led the rtos will blink when we have a fatal rtos error
@@ -662,10 +717,16 @@ void setup()
   // Create the threads that will be managed by the rtos
   // Sets the stack size and priority of each task
   // Also initializes a handler pointer to each task, which are important to communicate with and retrieve info from tasks
-  xTaskCreate(threadA,     "Task A",       512, NULL, tskIDLE_PRIORITY + 4, &Handle_aTask);
-  xTaskCreate(threadB,     "Task B",       512, NULL, tskIDLE_PRIORITY + 3, &Handle_bTask);
-  //xTaskCreate(taskMonitor, "Task Monitor", 256, NULL, tskIDLE_PRIORITY + 1, &Handle_monitorTask);
-  xTaskCreate(GPSthread,  "GPS Task", 256, NULL, tskIDLE_PRIORITY + 2, &Handle_gpsTask);
+  xTaskCreate(threadA,     "Task A",       DEFAULT_STACK_SIZE, NULL, tskIDLE_PRIORITY + 4, &Handle_aTask);
+  xTaskCreate(threadB,     "Task B",       DEFAULT_STACK_SIZE*2, NULL, tskIDLE_PRIORITY + 3, &Handle_bTask);
+
+  #ifdef TASK_MON
+    xTaskCreate(taskMonitor, "Task Monitor", DEFAULT_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1, &Handle_monitorTask);
+  #endif
+
+  #ifdef GPS_ON
+    xTaskCreate(GPSthread,  "GPS Task", DEFAULT_STACK_SIZE, NULL, tskIDLE_PRIORITY + 2, &Handle_gpsTask);
+  #endif
 
   // Start the RTOS, this function will never return and will schedule the tasks.
   vTaskStartScheduler();
@@ -674,7 +735,7 @@ void setup()
   // should never get here
   while(1)
   {
-	  SERIAL.println("Scheduler Failed! \n");
+	  SERIAL.println(F("Scheduler Failed! \n"));
 	  SERIAL.flush();
 	  delay(1000);
   }
