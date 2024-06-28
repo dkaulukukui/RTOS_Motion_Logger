@@ -682,7 +682,7 @@ void setup()
     SERIAL.begin(115200);
 
     delay(1000); // prevents usb driver crash on startup, do not omit this
-    while (!SERIAL) ;  // Wait for serial terminal to open port before starting program
+    //while (!SERIAL) ;  // Wait for serial terminal to open port before starting program
   #endif
 
   //**************************************************************************

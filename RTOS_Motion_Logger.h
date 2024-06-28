@@ -13,11 +13,11 @@
 
 #define BNO085_ON
 
-//#define GPS_ON  //enable GPS and GPS thread
+#define GPS_ON  //enable GPS and GPS thread
 
 #define RTC_ON
 
-#define TASK_MON  //enable task monitor thread
+//#define TASK_MON  //enable task monitor thread
 
 //**************************************************************************
 // Type Defines and Constants
