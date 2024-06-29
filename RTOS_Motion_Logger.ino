@@ -20,9 +20,9 @@ void setReports(void) {
   //bno08x.enableReport(SH2_ACCELEROMETER, reportIntervalUs);
   //bno08x.enableReport(SH2_GYROSCOPE_CALIBRATED);
   //bno08x.enableReport(SH2_MAGNETIC_FIELD_CALIBRATED);
-  bno08x.enableReport(SH2_LINEAR_ACCELERATION, reportIntervalUs*2);
+  bno08x.enableReport(SH2_LINEAR_ACCELERATION, LINEAR_ACCEL_REPORT_RATE);
   //bno08x.enableReport(SH2_GRAVITY);
-  bno08x.enableReport(SH2_ROTATION_VECTOR, reportIntervalUs);
+  bno08x.enableReport(SH2_ROTATION_VECTOR, ROTATION_REPORT_RATE);
   //bno08x.enableReport(SH2_GEOMAGNETIC_ROTATION_VECTOR);
   //bno08x.enableReport(SH2_GAME_ROTATION_VECTOR);
   //bno08x.enableReport(SH2_RAW_ACCELEROMETER);
@@ -79,18 +79,17 @@ void quaternionToEulerRV(sh2_RotationVectorWAcc_t* rotational_vector, euler_t* y
   quaternionToEuler(rotational_vector->real, rotational_vector->i, rotational_vector->j, rotational_vector->k, ypr, degrees);
 }
 
-float getHeading() {
-  // Y axis facing north, X facing east 
+float adjustHeading(float raw_yaw, float mag_dev) {
+  // configured for Y axis facing north, X facing east, Z up
   //default yaw is reported in degrees from north, rotating west is posistive, rotatin east is negative
   // South is either 180 or -180
   // Returns heading in True 0-359.9
+  // Need to adjust for magnetic deviation (negative if west and positive if east)
 
-  // Need to adjust for magnetic deviation
-
-  if (yaw > 0 && yaw < 180) { // Quadrants III, IV
-    return (360 - yaw - MAGNETIC_DECLINATION);
+  if (raw_yaw > 0 && raw_yaw < 180) { // Quadrants III, IV
+    return (360 - raw_yaw + mag_dev);
   } else {                      // Quadrant I and II
-    return (-(yaw)-MAGNETIC_DECLINATION);
+    return (-(raw_yaw) + mag_dev);
   } 
 }
 
@@ -190,8 +189,8 @@ static void threadA( void *pvParameters )  //Data Getting task
   
   SERIAL.println(F("Thread A: Started"));
   TickType_t tick_count = xTaskGetTickCount();
-  uint16_t p_sens = 0.1 * configTICK_RATE_HZ;  // 1 second period * 1000 ms/s == 10Hz
-  //uint16_t p_sens = 100;
+  //uint16_t p_sens = 0.1 * configTICK_RATE_HZ;  // 1 second period * 1000 ms/s == 10Hz
+  //uint16_t p_sens = Thread_Rate_10Hz;
 
     //**************************************************************************
   // BNO085 setup
@@ -246,7 +245,7 @@ static void threadA( void *pvParameters )  //Data Getting task
 
     // When time needs to be re-set on a previously configured device, the
   // following line sets the RTC to the date & time this sketch was compiled
-  //rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   // This line sets the RTC with an explicit date & time, for example to set
   // January 21, 2014 at 3am you would call:
   // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
@@ -255,7 +254,7 @@ static void threadA( void *pvParameters )  //Data Getting task
 
   while(1) {
     
-    vTaskDelayUntil(&tick_count, p_sens);
+    vTaskDelayUntil(&tick_count, DATA_THREAD_RATE); // 10Hz thread rate
     //myDelayMs(100);
 
     //**************************************************************************
@@ -318,11 +317,12 @@ static void threadA( void *pvParameters )  //Data Getting task
           bno_data->RotVec_J = sensorValue.un.rotationVector.j;
           bno_data->RotVec_K = sensorValue.un.rotationVector.k;
 
+          //Do the maths
           Normalized_quaternionToEuler(bno_data->RotVec_Real, bno_data->RotVec_I, bno_data->RotVec_J, bno_data->RotVec_K, &ypr, true); // degrees
-          yaw = ypr.yaw;
-          pitch = ypr.pitch;
-          roll = ypr.roll;
-          heading = getHeading();
+          //yaw = ypr.yaw;
+          //pitch = ypr.pitch;
+          //roll = ypr.roll;
+          heading = adjustHeading(ypr.yaw, MAGNETIC_DECLINATION);
           rot_accuracy = sensorValue.un.rotationVector.accuracy;
           break;
         /*
@@ -377,7 +377,8 @@ static void threadA( void *pvParameters )  //Data Getting task
 static void threadB( void *pvParameters )  //Data Output
 {
   SERIAL.println(F("Thread B: Started"));
-
+  
+  TickType_t tick_count = xTaskGetTickCount();
 
   //create temporary buffers to hold stuff for printing
   const uint8_t BUFLEN = 100;
@@ -429,13 +430,13 @@ static void threadB( void *pvParameters )  //Data Output
     strcat(buf, "\t");
     strcat(buf, "Roll");
     strcat(buf, "\t");
-    strcat(buf, "ROT Accuracy");
+    strcat(buf, "Accu");
     strcat(buf, "\t");
-    strcat(buf, "Accel X (right)");
+    strcat(buf, "Accel X");
     strcat(buf, "\t");
-    strcat(buf, "Accel Y (fwd)");
+    strcat(buf, "Accel Y");
     strcat(buf, "\t");
-    strcat(buf, "Accel Z (up)");
+    strcat(buf, "Accel Z");
     strcat(buf, "\t");
     strcat(buf, "LAT");
     strcat(buf, "\t");
@@ -465,14 +466,22 @@ static void threadB( void *pvParameters )  //Data Output
 
   while(1) { 
 
+    //vTaskDelayUntil(&tick_count, DATA_OUT_THREAD_RATE);
+
     //clear all temp buffers
     strcpy(buf,""); //reset buffer
+
+
+    //LOG FILE timestamp is a bastardized ISO 8601 with milliseconds tacked on
+    // example: 2024-06-27T23:03:42.000
 
     #ifdef RTC_ON
       strcpy(Log_Time,"");
       strcpy(FRAC_SEC,"");
 
       time = rtc.now();
+
+   
 
       if(time.second() != current_sec) {  //reset millis delta whenever the seconds changes
         last_millis = millis();
@@ -481,8 +490,6 @@ static void threadB( void *pvParameters )  //Data Output
 
       frac_sec = (millis() - last_millis)*0.001;
 
-      //snprintf(Log_Time, 20, "%02d:%02d:%02d %02d/%02d/%02d",  bno_data->log_time.hour(),  bno_data->log_time.minute(),  bno_data->log_time.second(), bno_data->log_time.day(),  bno_data->log_time.month(),  bno_data->log_time.year()); 
-      //bno_data->log_time.timestamp().toCharArray(Log_Time,20);
       time.timestamp().toCharArray(Log_Time,20);
       dtostrf(frac_sec,3,3,FRAC_SEC);
       strcat(buf, Log_Time);
@@ -499,8 +506,8 @@ static void threadB( void *pvParameters )  //Data Output
       bno_data = &BNO_Array[BNO_Tail_Q];
 
       append_float_to_log(buf,heading,5,2,LOG_SEPARATOR);
-      append_float_to_log(buf,pitch,5,2,LOG_SEPARATOR);
-      append_float_to_log(buf,roll,5,2,LOG_SEPARATOR);
+      append_float_to_log(buf,ypr.pitch,5,2,LOG_SEPARATOR);
+      append_float_to_log(buf,ypr.roll,5,2,LOG_SEPARATOR);
       append_float_to_log(buf,rot_accuracy,5,2,LOG_SEPARATOR);
       append_float_to_log(buf,bno_data->LinearAccel_X,5,2,LOG_SEPARATOR);
       append_float_to_log(buf,bno_data->LinearAccel_Y,5,2,LOG_SEPARATOR);
@@ -566,7 +573,7 @@ static void GPSthread( void *pvParameters )  //Data Getting task
   
   SERIAL.println(F("GPS Thread: Started"));
   TickType_t tick_count = xTaskGetTickCount();
-  uint16_t p_sens = 0.01 * configTICK_RATE_HZ;  // 1 second period * 1000 ms/s
+  //uint16_t p_sens = 0.01 * configTICK_RATE_HZ;  // 1 second period * 1000 ms/s
   //uint16_t p_sens = 100;
 
   //**************************************************************************
@@ -594,8 +601,7 @@ static void GPSthread( void *pvParameters )  //Data Getting task
 
   while(1) {
     
-    vTaskDelayUntil(&tick_count, p_sens);
-    //myDelayMs(100);
+    vTaskDelayUntil(&tick_count, GPS_THREAD_RATE);
 
     xSemaphoreTake(GPS_SemaphorHandle,0); //reserve the GPS data
 
@@ -628,6 +634,42 @@ static void GPSthread( void *pvParameters )  //Data Getting task
 
 #endif
 
+#ifdef HEARTBEAT
+// *****************************************************************
+// Create a thread that flashes default LED
+// *****************************************************************
+static void heartbeat(void *pvParameters) {
+  Serial.println("Heartbeat: Started");
+  TickType_t tick_count = xTaskGetTickCount();
+  uint16_t p_flash = hearbeat_rate * configTICK_RATE_HZ;
+
+  int countdownMS = Watchdog.enable(2000);
+  Serial.print("Enabled the watchdog with max countdown of ");
+  Serial.print(countdownMS, DEC);
+  Serial.println(" milliseconds!");
+  Serial.println();
+
+  while(1){
+    vTaskDelayUntil(&tick_count, p_flash);
+
+    if(heartbeat_state == false){
+      digitalWrite(ERROR_LED_PIN, HIGH);
+      heartbeat_state = true;
+    }
+
+    else {
+      digitalWrite(ERROR_LED_PIN, LOW);
+      heartbeat_state = false;
+    }
+
+    // Reset watchdog with every loop to make sure the sketch keeps running.
+    // If you comment out this call watch what happens in about 4 iterations!
+    Watchdog.reset();
+
+  }
+}
+
+#endif
 
 
 //*****************************************************************
@@ -756,15 +798,19 @@ void setup()
   // Create the threads that will be managed by the rtos
   // Sets the stack size and priority of each task
   // Also initializes a handler pointer to each task, which are important to communicate with and retrieve info from tasks
-  xTaskCreate(threadA,     "Task A",       DEFAULT_STACK_SIZE, NULL, tskIDLE_PRIORITY + 4, &Handle_aTask);
-  xTaskCreate(threadB,     "Task B",       DEFAULT_STACK_SIZE*2, NULL, tskIDLE_PRIORITY + 3, &Handle_bTask);
+  xTaskCreate(threadA,     "Task A",       DEFAULT_STACK_SIZE, NULL, tskIDLE_PRIORITY + 8, &Handle_aTask);
+  xTaskCreate(threadB,     "Task B",       DEFAULT_STACK_SIZE*2, NULL, tskIDLE_PRIORITY + 6, &Handle_bTask);
 
-  #ifdef TASK_MON
-    xTaskCreate(taskMonitor, "Task Monitor", DEFAULT_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1, &Handle_monitorTask);
+  #ifdef HEARTBEAT
+    xTaskCreate(heartbeat, "Heartbeat", DEFAULT_STACK_SIZE, NULL, tskIDLE_PRIORITY + 2, &Handle_heartbeat);
   #endif
 
   #ifdef GPS_ON
-    xTaskCreate(GPSthread,  "GPS Task", DEFAULT_STACK_SIZE, NULL, tskIDLE_PRIORITY + 2, &Handle_gpsTask);
+    xTaskCreate(GPSthread,  "GPS Task", DEFAULT_STACK_SIZE, NULL, tskIDLE_PRIORITY + 4, &Handle_gpsTask);
+  #endif
+
+  #ifdef TASK_MON
+    xTaskCreate(taskMonitor, "Task Monitor", DEFAULT_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1, &Handle_monitorTask);
   #endif
 
   // Start the RTOS, this function will never return and will schedule the tasks.

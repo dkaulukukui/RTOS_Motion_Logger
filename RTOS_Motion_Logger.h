@@ -2,6 +2,10 @@
 #include <avr/dtostrf.h>   //hack to get dtostrf() to work ???? idk why???
 
 #include <RTClib.h>
+
+
+#include <Adafruit_SleepyDog.h>
+
 //**************************************************************************
 // Configuration Option Defines
 // - Use this section to easily enable or disable functions/features
@@ -18,6 +22,9 @@
 #define RTC_ON
 
 //#define TASK_MON  //enable task monitor thread
+
+#define HEARTBEAT
+
 
 //**************************************************************************
 // Type Defines and Constants
@@ -36,11 +43,47 @@
 #define DEFAULT_STACK_SIZE 256
 
 //**************************************************************************
+// Timing Stuff
+//**************************************************************************
+bool heartbeat_state = false; //false=OFF, true=ON
+const u_int8_t hearbeat_rate = 1; //seconds between flashes
+
+const u_int16_t Thread_Rate_1Hz = 1 * configTICK_RATE_HZ;  // 1 second period * 1000 ms/s == 1Hz
+const u_int16_t Thread_Rate_5Hz = 0.2 * configTICK_RATE_HZ;  // 0.2 second period * 1000 ms/s == 5Hz
+const u_int16_t Thread_Rate_10Hz = 0.1 * configTICK_RATE_HZ;  // 0.1 second period * 1000 ms/s == 10Hz
+const u_int16_t Thread_Rate_50Hz = 0.02 * configTICK_RATE_HZ;  // 0.02 second period * 1000 ms/s == 50Hz
+const u_int16_t Thread_Rate_100Hz = 0.01 * configTICK_RATE_HZ;  // 0.01 second period * 1000 ms/s == 100Hz
+
+long reportInterval_50Hz = 20000; // in uS = 50Hz, 1sec/.02 = 50Hz
+long reportInterval_25Hz = 40000; //  in uS = 25Hz
+long reportInterval_10Hz = 100000; //  in uS = 10Hz
+
+
+//Data Gathering Rate = 10 Hz
+
+const u_int16_t DATA_THREAD_RATE = Thread_Rate_10Hz; //10Hz
+
+//BNO085 Report rates 
+long ROTATION_REPORT_RATE = reportInterval_50Hz; //50Hz , breaks when less
+long LINEAR_ACCEL_REPORT_RATE = reportInterval_25Hz; //25Hz
+
+//Data Output Rate = As data available
+//const u_int16_t DATA_OUT_THREAD_RATE = Thread_Rate_10Hz; // 10Hz
+
+//GPS thread Rate = 100HZ
+
+const u_int16_t GPS_THREAD_RATE = Thread_Rate_100Hz; //100Hz
+
+
+
+
+//**************************************************************************
 // global variables
 //**************************************************************************
 TaskHandle_t Handle_aTask;
 TaskHandle_t Handle_bTask;
 TaskHandle_t Handle_monitorTask;
+TaskHandle_t Handle_heartbeat;
 
 const char LOG_SEPARATOR = '\t';  //character to use for serial logging seperation
 
@@ -53,11 +96,11 @@ const char LOG_SEPARATOR = '\t';  //character to use for serial logging seperati
   #include <SPI.h>
   #include <SD.h>
 
-  Sd2Card SDcard;
+  //Sd2Card SDcard;
 
   #define SD_chipSelect 10
 
-  char filename[20] =  "DD-hh-mm.csv";
+  char filename[14] =  "MMDDhhmm.csv"; //8.3 formatted timestamp
   //char filename[20] =  "test2.csv";
 
   #define WIFI_CS_PIN 8
@@ -85,7 +128,7 @@ sh2_SensorValue_t sensorValue;
 // BNO Queue
 size_t BNO_Tail_Q = 0;
 size_t BNO_Head_Q = 0;
-const size_t BNO_ARRAY_SIZE = 20;          // size of records
+const size_t BNO_ARRAY_SIZE = 50;          // size of records
 int BNO_error = 0;             // count of overrun error_senses
 SemaphoreHandle_t BNO_Data_SemaphorHandle;   // count of data records
 SemaphoreHandle_t BNO_Space_SemaphorHandle;  // count of freequ buffers
@@ -139,14 +182,12 @@ struct euler_t {
   float roll;
 } ypr;
 
-long reportIntervalUs = 20000; // 50Hz
-
 // Vars to hold most recent report values
-float yaw, pitch, roll, heading, rot_accuracy;
+float heading, rot_accuracy;
 int acc_status;
 
 
-//const float MAGNETIC_DECLINATION = 9.48; //Honolulu
+//const float MAGNETIC_DECLINATION = -9.48; //Honolulu
 const float MAGNETIC_DECLINATION = 0;
 
 //**************************************************************************
