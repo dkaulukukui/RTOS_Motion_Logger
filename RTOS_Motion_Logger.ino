@@ -192,65 +192,72 @@ static void threadA( void *pvParameters )  //Data Getting task
   //uint16_t p_sens = 0.1 * configTICK_RATE_HZ;  // 1 second period * 1000 ms/s == 10Hz
   //uint16_t p_sens = Thread_Rate_10Hz;
 
+  #ifdef BNO085_ON
+      //**************************************************************************
+    // BNO085 setup
     //**************************************************************************
-  // BNO085 setup
-  //**************************************************************************
-  //Serial.println("Adafruit BNO08x test!");
+    //Serial.println("Adafruit BNO08x test!");
 
-  // Try to initialize!
-  while (!bno08x.begin_I2C()) {
-  //if (!bno08x.begin_I2C()) {
-    // if (!bno08x.begin_UART(&Serial1)) {  // Requires a device with > 300 byte
-    // UART buffer! if (!bno08x.begin_SPI(BNO08X_CS, BNO08X_INT)) {
-    Serial.println(F("Failed to find BNO08x chip"));
-    //while (1) {
-      delay(100);
-    //}
-    //error(5);
-  }
-  Serial.println(F("BNO08x Found!"));
+    // Try to initialize!
+    while (!bno08x.begin_I2C()) {
+    //if (!bno08x.begin_I2C()) {
+      // if (!bno08x.begin_UART(&Serial1)) {  // Requires a device with > 300 byte
+      // UART buffer! if (!bno08x.begin_SPI(BNO08X_CS, BNO08X_INT)) {
+      Serial.println(F("Failed to find BNO08x chip"));
+      //while (1) {
+        delay(100);
+      //}
+      //error(5);
+    }
+    Serial.println(F("BNO08x Found!"));
 
-  for (int n = 0; n < bno08x.prodIds.numEntries; n++) {
-    Serial.print(F("Part "));
-    Serial.print(bno08x.prodIds.entry[n].swPartNumber);
-    Serial.print(F(": Version :"));
-    Serial.print(bno08x.prodIds.entry[n].swVersionMajor);
-    Serial.print(F("."));
-    Serial.print(bno08x.prodIds.entry[n].swVersionMinor);
-    Serial.print(F("."));
-    Serial.print(bno08x.prodIds.entry[n].swVersionPatch);
-    Serial.print(F(" Build "));
-    Serial.println(bno08x.prodIds.entry[n].swBuildNumber);
-  }
+    for (int n = 0; n < bno08x.prodIds.numEntries; n++) {
+      Serial.print(F("Part "));
+      Serial.print(bno08x.prodIds.entry[n].swPartNumber);
+      Serial.print(F(": Version :"));
+      Serial.print(bno08x.prodIds.entry[n].swVersionMajor);
+      Serial.print(F("."));
+      Serial.print(bno08x.prodIds.entry[n].swVersionMinor);
+      Serial.print(F("."));
+      Serial.print(bno08x.prodIds.entry[n].swVersionPatch);
+      Serial.print(F(" Build "));
+      Serial.println(bno08x.prodIds.entry[n].swBuildNumber);
+    }
 
-  //**************************************************************************
-  // RTC setup
-  //**************************************************************************
- 
-  if (! rtc.begin()) {
-    Serial.println(F("Couldn't find RTC"));
-    Serial.flush();
-    //while (1) delay(10);
-  }
+  #endif
 
-  if (! rtc.isrunning()) {
-    Serial.println(F("RTC is NOT running, let's set the time!"));
-    // When time needs to be set on a new device, or after a power loss, the
+  #ifdef RTC_ON
+
+    //**************************************************************************
+    // RTC setup
+    //**************************************************************************
+  
+    if (! rtc.begin()) {
+      Serial.println(F("Couldn't find RTC"));
+      Serial.flush();
+      //while (1) delay(10);
+    }
+
+    if (! rtc.isrunning()) {
+      Serial.println(F("RTC is NOT running, let's set the time!"));
+      // When time needs to be set on a new device, or after a power loss, the
+      // following line sets the RTC to the date & time this sketch was compiled
+      rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+      // This line sets the RTC with an explicit date & time, for example to set
+      // January 21, 2014 at 3am you would call:
+      // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+    }
+
+      // When time needs to be re-set on a previously configured device, the
     // following line sets the RTC to the date & time this sketch was compiled
-    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    //rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
     // This line sets the RTC with an explicit date & time, for example to set
     // January 21, 2014 at 3am you would call:
     // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
-  }
 
-    // When time needs to be re-set on a previously configured device, the
-  // following line sets the RTC to the date & time this sketch was compiled
-  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-  // This line sets the RTC with an explicit date & time, for example to set
-  // January 21, 2014 at 3am you would call:
-  // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+    rtc.start();
 
-  rtc.start();
+  #endif
 
   while(1) {
     
@@ -601,7 +608,7 @@ static void GPSthread( void *pvParameters )  //Data Getting task
 
   while(1) {
     
-    vTaskDelayUntil(&tick_count, GPS_THREAD_RATE);
+    vTaskDelayUntil(&tick_count, GPS_THREAD_RATE); //100Hz
 
     xSemaphoreTake(GPS_SemaphorHandle,0); //reserve the GPS data
 
@@ -650,7 +657,7 @@ static void heartbeat(void *pvParameters) {
   Serial.println();
 
   while(1){
-    vTaskDelayUntil(&tick_count, p_flash);
+    vTaskDelayUntil(&tick_count, p_flash); //1 Hz
 
     if(heartbeat_state == false){
       digitalWrite(ERROR_LED_PIN, HIGH);

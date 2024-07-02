@@ -13,9 +13,9 @@
 
 #define SERIAL_LOGGING  //leave on 
 
-#define SD_LOGGING //will break program if enabled
+#define SD_LOGGING //
 
-#define BNO085_ON
+#define BNO085_ON//
 
 #define GPS_ON  //enable GPS and GPS thread
 
