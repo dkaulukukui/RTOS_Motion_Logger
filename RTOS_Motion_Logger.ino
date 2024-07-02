@@ -28,6 +28,7 @@ void setReports(void) {
   //bno08x.enableReport(SH2_RAW_ACCELEROMETER);
   //bno08x.enableReport(SH2_RAW_GYROSCOPE);
   //bno08x.enableReport(SH2_RAW_MAGNETOMETER);
+  bno08x.enableReport(SH2_TAP_DETECTOR,reportInterval_10Hz);
 }
 
 //***********MATH STUFF***************************************************************
@@ -363,6 +364,14 @@ static void threadA( void *pvParameters )  //Data Getting task
           bno_data->RawMag_Z = sensorValue.un.rawMagnetometer.z;
           break;
           */
+        case SH2_TAP_DETECTOR:
+          bno_data->tap_detect = sensorValue.un.tapDetector.flags;
+
+          if(bno_data->tap_detect == TAPDET_DOUBLE){
+            SERIAL.println(F("DOUBLE TAP!!"));
+          }
+          
+          break;
       }
 
       bno_data->log_time = rtc.now();  // time data is logged

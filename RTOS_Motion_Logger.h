@@ -51,6 +51,7 @@ const u_int8_t hearbeat_rate = 1; //seconds between flashes
 const u_int16_t Thread_Rate_1Hz = 1 * configTICK_RATE_HZ;  // 1 second period * 1000 ms/s == 1Hz
 const u_int16_t Thread_Rate_5Hz = 0.2 * configTICK_RATE_HZ;  // 0.2 second period * 1000 ms/s == 5Hz
 const u_int16_t Thread_Rate_10Hz = 0.1 * configTICK_RATE_HZ;  // 0.1 second period * 1000 ms/s == 10Hz
+const u_int16_t Thread_Rate_25Hz = 0.04 * configTICK_RATE_HZ;  // 0.02 second period * 1000 ms/s == 50Hz
 const u_int16_t Thread_Rate_50Hz = 0.02 * configTICK_RATE_HZ;  // 0.02 second period * 1000 ms/s == 50Hz
 const u_int16_t Thread_Rate_100Hz = 0.01 * configTICK_RATE_HZ;  // 0.01 second period * 1000 ms/s == 100Hz
 
@@ -61,7 +62,8 @@ long reportInterval_10Hz = 100000; //  in uS = 10Hz
 
 //Data Gathering Rate = 10 Hz
 
-const u_int16_t DATA_THREAD_RATE = Thread_Rate_10Hz; //10Hz
+//const u_int16_t DATA_THREAD_RATE = Thread_Rate_10Hz; //10Hz
+const u_int16_t DATA_THREAD_RATE = Thread_Rate_25Hz; //10Hz
 
 //BNO085 Report rates 
 long ROTATION_REPORT_RATE = reportInterval_50Hz; //50Hz , breaks when less
@@ -170,6 +172,7 @@ struct BNO_DATA {
   //int16_t RawMag_X;
   //int16_t RawMag_Y;
   //int16_t RawMag_Z;
+  uint8_t tap_detect;
   DateTime log_time;
 };                          //structure of BNO data
 
