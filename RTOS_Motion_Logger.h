@@ -13,6 +13,8 @@
 
 #define SERIAL_LOGGING  //leave on 
 
+#define SERIAL_SPEED 230400
+
 #define SD_LOGGING //
 
 #define BNO085_ON//
@@ -96,9 +98,14 @@ const char LOG_SEPARATOR = '\t';  //character to use for serial logging seperati
 #ifdef SD_LOGGING
 
   #include <SPI.h>
-  #include <SD.h>
+  //#include <SD.h>
+  #include <SdFat.h>
 
   //Sd2Card SDcard;
+
+  SdFat sd;
+
+  SdFile dataFile;
 
   #define SD_chipSelect 10
 
@@ -106,6 +113,9 @@ const char LOG_SEPARATOR = '\t';  //character to use for serial logging seperati
   //char filename[20] =  "test2.csv";
 
   #define WIFI_CS_PIN 8
+
+
+
 
 #endif
 
@@ -201,7 +211,7 @@ const float MAGNETIC_DECLINATION = 0;
 
   RTC_PCF8523 rtc;
 
-  DateTime time;
+  DateTime timelog;
 
   unsigned long last_millis = 0;
 

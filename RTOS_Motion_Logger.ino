@@ -423,17 +423,21 @@ static void threadB( void *pvParameters )  //Data Output
 
     // set up variables using the SD utility library functions:
 
-    time = rtc.now();
-    time.toString(filename);
+    timelog = rtc.now();
+    timelog.toString(filename);
     Serial.println(filename);
 
       // see if the card is present and can be initialized:
-    if (!SD.begin(SD_chipSelect)) {
+    //if (!SD.begin(SD_chipSelect)) {
+    if (!sd.begin(SD_chipSelect,SD_SCK_MHZ(50))) { //sdfat version
+
       Serial.println(F("Card failed, or not present"));
       // don't do anything more:
       error(6);
       //while (1);
     }
+
+
 
     Serial.println(F("card initialized."));
 
@@ -463,13 +467,15 @@ static void threadB( void *pvParameters )  //Data Output
     strcat(buf, "COG");
     strcat(buf, "\t");
 
-    File dataFile = SD.open(filename, FILE_WRITE); 
+    //File dataFile = SD.open(filename, FILE_WRITE); 
+    //File dataFile = SD.open(filename, O_CREAT | O_WRITE); //https://forum.arduino.cc/t/why-is-the-sd-library-slow/49791
+    dataFile.open(filename, O_CREAT | O_WRITE); //fatlib version
 
       // if the file is available, write to it:
     if (dataFile) {
       dataFile.println(buf);
-      dataFile.flush();
-      dataFile.close();
+      //dataFile.flush();
+      dataFile.close();  //close calls flush
       // print to the serial port too:
       Serial.println(buf);
     }
@@ -495,18 +501,18 @@ static void threadB( void *pvParameters )  //Data Output
       strcpy(Log_Time,"");
       strcpy(FRAC_SEC,"");
 
-      time = rtc.now();
+      timelog = rtc.now();
 
    
 
-      if(time.second() != current_sec) {  //reset millis delta whenever the seconds changes
+      if(timelog.second() != current_sec) {  //reset millis delta whenever the seconds changes
         last_millis = millis();
-        current_sec = time.second();
+        current_sec = timelog.second();
       }
 
       frac_sec = (millis() - last_millis)*0.001;
 
-      time.timestamp().toCharArray(Log_Time,20);
+      timelog.timestamp().toCharArray(Log_Time,20);
       dtostrf(frac_sec,3,3,FRAC_SEC);
       strcat(buf, Log_Time);
       //strcat(buf, "\t");
@@ -558,12 +564,14 @@ static void threadB( void *pvParameters )  //Data Output
     #ifdef SD_LOGGING
       // open the file. note that only one file can be open at a time,
       // so you have to close this one before opening another.
-      File dataFile = SD.open(filename, FILE_WRITE); 
+      //File dataFile = SD.open(filename, FILE_WRITE); 
+      //File dataFile = SD.open(filename, O_CREAT | O_APPEND | O_WRITE); //https://forum.arduino.cc/t/why-is-the-sd-library-slow/49791
+      dataFile.open(filename, O_CREAT | O_APPEND | O_WRITE); // fatlib
 
         // if the file is available, write to it:
       if (dataFile) {
         dataFile.println(buf);
-        dataFile.flush();
+       // dataFile.flush();
         dataFile.close();
         // print to the serial port too:
       // Serial.println(dataString);
@@ -776,7 +784,7 @@ void setup()
   //digitalWrite(SD_chipSelect, LOW);
 
   #ifdef SERIAL_LOGGING
-    SERIAL.begin(115200);
+    SERIAL.begin(SERIAL_SPEED);
 
     delay(1000); // prevents usb driver crash on startup, do not omit this
     //while (!SERIAL) ;  // Wait for serial terminal to open port before starting program
