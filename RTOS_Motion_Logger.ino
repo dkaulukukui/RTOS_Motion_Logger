@@ -756,8 +756,8 @@ void taskMonitor(void *pvParameters)
 void setup() 
 {
 
-  //digitalWrite(WIFI_CS_PIN,HIGH);  //disable Wifi module SPI
-  //digitalWrite(SD_chipSelect, LOW);
+  digitalWrite(WIFI_CS_PIN,HIGH);  //disable Wifi module SPI
+  digitalWrite(SD_chipSelect, LOW);
 
   #ifdef SERIAL_LOGGING
     SERIAL.begin(115200);
