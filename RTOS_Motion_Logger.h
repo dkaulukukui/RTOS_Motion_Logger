@@ -64,8 +64,9 @@ long reportInterval_10Hz = 100000; //  in uS = 10Hz
 
 //Data Gathering Rate = 10 Hz
 
-//const u_int16_t DATA_THREAD_RATE = Thread_Rate_10Hz; //10Hz
-const u_int16_t DATA_THREAD_RATE = Thread_Rate_25Hz; //10Hz
+const u_int16_t DATA_THREAD_RATE = Thread_Rate_10Hz; //10Hz
+//const u_int16_t DATA_THREAD_RATE = Thread_Rate_25Hz; //25Hz
+//const u_int16_t DATA_THREAD_RATE = Thread_Rate_50Hz; //25Hz
 
 //BNO085 Report rates 
 long ROTATION_REPORT_RATE = reportInterval_50Hz; //50Hz , breaks when less
@@ -103,6 +104,7 @@ const char LOG_SEPARATOR = '\t';  //character to use for serial logging seperati
 
   //Sd2Card SDcard;
 
+
   SdFat sd;
 
   SdFile dataFile;
@@ -113,7 +115,9 @@ const char LOG_SEPARATOR = '\t';  //character to use for serial logging seperati
   //char filename[20] =  "test2.csv";
 
   #define WIFI_CS_PIN 8
-
+  
+  //#define SD_CONFIG SdSpiConfig(SD_chipSelect, DEDICATED_SPI, SD_SCK_MHZ(8)) //works @8MHz
+  #define SD_CONFIG SdSpiConfig(SD_chipSelect, DEDICATED_SPI, SD_SCK_MHZ(12)) //also works
 
 
 

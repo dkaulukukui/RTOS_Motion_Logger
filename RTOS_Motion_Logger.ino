@@ -429,7 +429,7 @@ static void threadB( void *pvParameters )  //Data Output
 
       // see if the card is present and can be initialized:
     //if (!SD.begin(SD_chipSelect)) {
-    if (!sd.begin(SD_chipSelect,SD_SCK_MHZ(50))) { //sdfat version
+    if (!sd.begin(SD_CONFIG)) { //sdfat version
 
       Serial.println(F("Card failed, or not present"));
       // don't do anything more:
@@ -780,8 +780,13 @@ void taskMonitor(void *pvParameters)
 void setup() 
 {
 
-  //digitalWrite(WIFI_CS_PIN,HIGH);  //disable Wifi module SPI
-  //digitalWrite(SD_chipSelect, LOW);
+  #ifdef SD_LOGGING
+    pinMode(WIFI_CS_PIN, OUTPUT);
+    digitalWrite(WIFI_CS_PIN,HIGH);  //disable Wifi module SPI
+
+    pinMode(SD_chipSelect, OUTPUT);
+    digitalWrite(SD_chipSelect, LOW);  //enable SD card
+  #endif
 
   #ifdef SERIAL_LOGGING
     SERIAL.begin(SERIAL_SPEED);
@@ -799,11 +804,11 @@ void setup()
   #endif
 
   // 
-  SERIAL.println(F(""));
-  SERIAL.println(F("******************************"));
-  SERIAL.println(F("        Program start         "));
-  SERIAL.println(F("******************************"));
-  SERIAL.flush();
+  //SERIAL.println(F(""));
+  //SERIAL.println(F("******************************"));
+  //SERIAL.println(F("        Program start         "));
+  //SERIAL.println(F("******************************"));
+  //SERIAL.flush();
 
   // Set the led the rtos will blink when we have a fatal rtos error
   // RTOS also Needs to know if high/low is the state that turns on the led.
