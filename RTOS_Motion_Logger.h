@@ -86,6 +86,7 @@ TaskHandle_t Handle_aTask;
 TaskHandle_t Handle_bTask;
 TaskHandle_t Handle_monitorTask;
 TaskHandle_t Handle_heartbeat;
+TaskHandle_t Handle_Data_Output;
 
 const char LOG_SEPARATOR = '\t';  //character to use for serial logging seperation
 
@@ -106,6 +107,13 @@ const char LOG_SEPARATOR = '\t';  //character to use for serial logging seperati
   //char filename[20] =  "test2.csv";
 
   #define WIFI_CS_PIN 8
+
+  #define MAX_CHARS_LINE 120 //max size of each line in log file
+  #define SD_LOGGING_BUFF_LEN 20 //number of lines in buffer
+
+  char sd_logging_buff[SD_LOGGING_BUFF_LEN][MAX_CHARS_LINE]; //2D array holding data to be logged
+
+  SemaphoreHandle_t Data_SemaphorHandle;   // mutex handle
 
 #endif
 

@@ -396,10 +396,13 @@ static void threadB( void *pvParameters )  //Data Output
   TickType_t tick_count = xTaskGetTickCount();
 
   //create temporary buffers to hold stuff for printing
-  const uint8_t BUFLEN = 100;
-  char buf[BUFLEN] = "";
+  //const uint8_t BUFLEN = 100;
+  char buf[MAX_CHARS_LINE] = "";
 
   const uint8_t FLT_STR_LEN = 10;
+
+  uint8_t out_index = 0;
+  bool have_the_mutex = true;
 
   #ifdef RTC_ON
   
@@ -413,71 +416,12 @@ static void threadB( void *pvParameters )  //Data Output
 
   #ifdef BNO085_ON
 
-    BNO_DATA *bno_data; // = &BNO_Array[BNO_Tail_Q];
+    //BNO_DATA *bno_data; // = &BNO_Array[BNO_Tail_Q];
+    BNO_DATA *bno_data = &BNO_Array[BNO_Tail_Q];
 
   #endif
 
-  #ifdef SD_LOGGING
-  //*************SD Card Setup**************** */
 
-    // set up variables using the SD utility library functions:
-
-    time = rtc.now();
-    time.toString(filename);
-    Serial.println(filename);
-
-      // see if the card is present and can be initialized:
-    if (!SD.begin(SD_chipSelect)) {
-      Serial.println(F("Card failed, or not present"));
-      // don't do anything more:
-      error(6);
-      //while (1);
-    }
-
-    Serial.println(F("card initialized."));
-
-    //build and log file header
-    strcat(buf, "Time(ISO+millis)");
-    strcat(buf, "\t");
-    strcat(buf, "HDG");
-    strcat(buf, "\t");
-    strcat(buf, "Pitch");
-    strcat(buf, "\t");
-    strcat(buf, "Roll");
-    strcat(buf, "\t");
-    strcat(buf, "Accu");
-    strcat(buf, "\t");
-    strcat(buf, "Accel X");
-    strcat(buf, "\t");
-    strcat(buf, "Accel Y");
-    strcat(buf, "\t");
-    strcat(buf, "Accel Z");
-    strcat(buf, "\t");
-    strcat(buf, "LAT");
-    strcat(buf, "\t");
-    strcat(buf, "LON");
-    strcat(buf, "\t");
-    strcat(buf, "Spd(Kts)");
-    strcat(buf, "\t");
-    strcat(buf, "COG");
-    strcat(buf, "\t");
-
-    File dataFile = SD.open(filename, FILE_WRITE); 
-
-      // if the file is available, write to it:
-    if (dataFile) {
-      dataFile.println(buf);
-      dataFile.flush();
-      dataFile.close();
-      // print to the serial port too:
-      Serial.println(buf);
-    }
-    // if the file isn't open, pop up an error:
-    else {
-      Serial.println(F("error opening datalog file"));
-    }
-
-  #endif
 
   while(1) { 
 
@@ -549,28 +493,25 @@ static void threadB( void *pvParameters )  //Data Output
 
     #endif
 
-    #ifdef SERIAL_LOGGING 
-      SERIAL.println(buf);
-      SERIAL.flush();
-    #endif
-
     #ifdef SD_LOGGING
-      // open the file. note that only one file can be open at a time,
-      // so you have to close this one before opening another.
-      File dataFile = SD.open(filename, FILE_WRITE); 
 
-        // if the file is available, write to it:
-      if (dataFile) {
-        dataFile.println(buf);
-        dataFile.flush();
-        dataFile.close();
-        // print to the serial port too:
-      // Serial.println(dataString);
+      if(xSemaphoreTake(Data_SemaphorHandle,0) == pdTRUE){
+        have_the_mutex = true; 
+      } 
+
+      if(have_the_mutex == true){
+
+        if(out_index < SD_LOGGING_BUFF_LEN){
+          strcpy(sd_logging_buff[out_index],buf);
+          out_index++;
+        }
+        else{ //buffer full give back the mutex for output
+          have_the_mutex == false;
+          xSemaphoreGive(Data_SemaphorHandle);
+          out_index = 0;
+        }
       }
-      // if the file isn't open, pop up an error:
-      else {
-        Serial.println(F("error opening datalog file"));
-      }
+
     #endif
 
   }
@@ -686,6 +627,116 @@ static void heartbeat(void *pvParameters) {
 
 #endif
 
+#ifdef SD_LOGGING
+// *****************************************************************
+// Create a thread that logs data to the SD card
+// *****************************************************************
+static void data_output(void *pvParameters) {
+  Serial.println("Data Output: Started");
+  TickType_t tick_count = xTaskGetTickCount();
+  uint16_t p_flash = DATA_THREAD_RATE;
+  
+  char buf[MAX_CHARS_LINE] = "";
+
+  //*************SD Card Setup**************** */
+
+    // set up variables using the SD utility library functions:
+
+    time = rtc.now();
+    time.toString(filename);
+    Serial.println(filename);
+
+      // see if the card is present and can be initialized:
+    if (!SD.begin(SD_chipSelect)) {
+      Serial.println(F("Card failed, or not present"));
+      // don't do anything more:
+      error(6);
+      //while (1);
+    }
+
+    Serial.println(F("card initialized."));
+
+    //build and log file header
+    strcat(buf, "Time(ISO+millis)");
+    strcat(buf, "\t");
+    strcat(buf, "HDG");
+    strcat(buf, "\t");
+    strcat(buf, "Pitch");
+    strcat(buf, "\t");
+    strcat(buf, "Roll");
+    strcat(buf, "\t");
+    strcat(buf, "Accu");
+    strcat(buf, "\t");
+    strcat(buf, "Accel X");
+    strcat(buf, "\t");
+    strcat(buf, "Accel Y");
+    strcat(buf, "\t");
+    strcat(buf, "Accel Z");
+    strcat(buf, "\t");
+    strcat(buf, "LAT");
+    strcat(buf, "\t");
+    strcat(buf, "LON");
+    strcat(buf, "\t");
+    strcat(buf, "Spd(Kts)");
+    strcat(buf, "\t");
+    strcat(buf, "COG");
+    strcat(buf, "\t");
+
+    File dataFile = SD.open(filename, FILE_WRITE); 
+
+      // if the file is available, write to it:
+    if (dataFile) {
+      dataFile.println(buf);
+      dataFile.flush();
+      dataFile.close();
+      // print to the serial port too:
+      Serial.println(buf);
+    }
+    // if the file isn't open, pop up an error:
+    else {
+      Serial.println(F("error opening datalog file"));
+    }
+
+  while(1){
+    vTaskDelayUntil(&tick_count, p_flash);
+
+    if(xSemaphoreTake(Data_SemaphorHandle,0) != pdFALSE){ //mutex available, send entire buffer to SD card
+
+      File dataFile = SD.open(filename, FILE_WRITE); 
+
+        // if the file is available, write to it:
+      if (dataFile) {
+
+        //Emtpty buffer into SD file
+        for(int i = 0; i <SD_LOGGING_BUFF_LEN; i++){
+          dataFile.println(sd_logging_buff[i]);
+
+          #ifdef SERIAL_LOGGING
+              // print to the serial port too:
+              Serial.println(sd_logging_buff[i]);
+          #endif
+
+        }
+
+        dataFile.flush();
+        dataFile.close();
+
+        //reset logging buffer
+        memset(sd_logging_buff,'\0',(SD_LOGGING_BUFF_LEN*MAX_CHARS_LINE)*(sizeof(char)));
+
+      }
+      // if the file isn't open, pop up an error:
+      else {
+        Serial.println(F("error opening datalog file"));
+      }
+
+      xSemaphoreGive(Data_SemaphorHandle); //give back the semaphore
+    }
+  }
+}
+
+#endif
+
 
 //*****************************************************************
 // Task will periodically print out useful information about the tasks running
@@ -773,8 +824,15 @@ void taskMonitor(void *pvParameters)
 void setup() 
 {
 
-  digitalWrite(WIFI_CS_PIN,HIGH);  //disable Wifi module SPI
-  digitalWrite(SD_chipSelect, LOW);
+  #ifdef SD_LOGGING
+    digitalWrite(WIFI_CS_PIN,HIGH);  //disable Wifi module SPI
+    digitalWrite(SD_chipSelect, LOW);
+
+    memset(sd_logging_buff,'\0',(SD_LOGGING_BUFF_LEN*MAX_CHARS_LINE)*(sizeof(char)));
+
+    Data_SemaphorHandle = xSemaphoreCreateMutex();
+ 
+  #endif
 
   #ifdef SERIAL_LOGGING
     SERIAL.begin(115200);
@@ -828,6 +886,10 @@ void setup()
 
   #ifdef TASK_MON
     xTaskCreate(taskMonitor, "Task Monitor", DEFAULT_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1, &Handle_monitorTask);
+  #endif
+
+  #ifdef SD_LOGGING
+    xTaskCreate(data_output, "Data Output", DEFAULT_STACK_SIZE, NULL, tskIDLE_PRIORITY + 5, &Handle_Data_Output);
   #endif
 
   // Start the RTOS, this function will never return and will schedule the tasks.
