@@ -497,6 +497,7 @@ static void threadB( void *pvParameters )  //Data Output
 
       if(xSemaphoreTake(Data_SemaphorHandle,0) == pdTRUE){
         have_the_mutex = true; 
+        //SERIAL.println("thread B has the mutex");
       } 
 
       if(have_the_mutex == true){
@@ -506,9 +507,10 @@ static void threadB( void *pvParameters )  //Data Output
           out_index++;
         }
         else{ //buffer full give back the mutex for output
-          have_the_mutex == false;
+          have_the_mutex = false;
           xSemaphoreGive(Data_SemaphorHandle);
           out_index = 0;
+          //SERIAL.println("buffer full");
         }
       }
 
@@ -690,7 +692,9 @@ static void data_output(void *pvParameters) {
       dataFile.flush();
       dataFile.close();
       // print to the serial port too:
-      Serial.println(buf);
+      #ifdef SERIAL_LOGGING
+        Serial.println(buf);
+      #endif
     }
     // if the file isn't open, pop up an error:
     else {
@@ -701,36 +705,45 @@ static void data_output(void *pvParameters) {
     vTaskDelayUntil(&tick_count, p_flash);
 
     if(xSemaphoreTake(Data_SemaphorHandle,0) != pdFALSE){ //mutex available, send entire buffer to SD card
+      
+      //SERIAL.println("Output thread has the mutex");
 
-      File dataFile = SD.open(filename, FILE_WRITE); 
+      //check if logging buffer is empty
+      if(strcmp(sd_logging_buff[0],"\0") != 0) { // 
 
-        // if the file is available, write to it:
-      if (dataFile) {
+        //SERIAL.println("buffer is not empty");
 
-        //Emtpty buffer into SD file
-        for(int i = 0; i <SD_LOGGING_BUFF_LEN; i++){
-          dataFile.println(sd_logging_buff[i]);
+        File dataFile = SD.open(filename, FILE_WRITE); 
 
-          #ifdef SERIAL_LOGGING
-              // print to the serial port too:
-              Serial.println(sd_logging_buff[i]);
-          #endif
+          // if the file is available, write to it:
+        if (dataFile) {
+
+          //Emtpty buffer into SD file
+          for(int i = 0; i <SD_LOGGING_BUFF_LEN; i++){
+            dataFile.println(sd_logging_buff[i]);
+
+            #ifdef SERIAL_LOGGING
+                // print to the serial port too:
+                Serial.println(sd_logging_buff[i]);
+            #endif
+
+          }
+
+          dataFile.flush();
+          dataFile.close();
+
+          //reset logging buffer
+          memset(sd_logging_buff,'\0',(SD_LOGGING_BUFF_LEN*MAX_CHARS_LINE)*(sizeof(char)));
 
         }
-
-        dataFile.flush();
-        dataFile.close();
-
-        //reset logging buffer
-        memset(sd_logging_buff,'\0',(SD_LOGGING_BUFF_LEN*MAX_CHARS_LINE)*(sizeof(char)));
+        // if the file isn't open, pop up an error:
+        else {
+          Serial.println(F("error opening datalog file"));
+        }
 
       }
-      // if the file isn't open, pop up an error:
-      else {
-        Serial.println(F("error opening datalog file"));
-      }
-
-      xSemaphoreGive(Data_SemaphorHandle); //give back the semaphore
+      
+        xSemaphoreGive(Data_SemaphorHandle); //give back the semaphore
     }
   }
 }
