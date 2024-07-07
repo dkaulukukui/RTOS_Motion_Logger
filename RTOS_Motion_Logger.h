@@ -66,14 +66,14 @@ long reportInterval_10Hz = 100000; //  in uS = 10Hz
 
 const u_int16_t DATA_THREAD_RATE = Thread_Rate_10Hz; //10Hz
 //const u_int16_t DATA_THREAD_RATE = Thread_Rate_25Hz; //25Hz
-//const u_int16_t DATA_THREAD_RATE = Thread_Rate_50Hz; //25Hz
+//const u_int16_t DATA_THREAD_RATE = Thread_Rate_50Hz; //50Hz
 
 //BNO085 Report rates 
 long ROTATION_REPORT_RATE = reportInterval_50Hz; //50Hz , breaks when less
 long LINEAR_ACCEL_REPORT_RATE = reportInterval_25Hz; //25Hz
 
 //Data Output Rate = As data available
-//const u_int16_t DATA_OUT_THREAD_RATE = Thread_Rate_10Hz; // 10Hz
+const u_int16_t DATA_OUT_THREAD_RATE = Thread_Rate_50Hz; // 50Hz
 
 //GPS thread Rate = 100HZ
 
@@ -117,7 +117,7 @@ const char LOG_SEPARATOR = '\t';  //character to use for serial logging seperati
   #define WIFI_CS_PIN 8
   
   //#define SD_CONFIG SdSpiConfig(SD_chipSelect, DEDICATED_SPI, SD_SCK_MHZ(8)) //works @8MHz
-  #define SD_CONFIG SdSpiConfig(SD_chipSelect, DEDICATED_SPI, SD_SCK_MHZ(12)) //also works
+  #define SD_CONFIG SdSpiConfig(SD_chipSelect, DEDICATED_SPI, SD_SCK_MHZ(8)) //also works
 
 
 
@@ -144,7 +144,7 @@ sh2_SensorValue_t sensorValue;
 // BNO Queue
 size_t BNO_Tail_Q = 0;
 size_t BNO_Head_Q = 0;
-const size_t BNO_ARRAY_SIZE = 50;          // size of records
+const size_t BNO_ARRAY_SIZE = 20;          // size of records
 int BNO_error = 0;             // count of overrun error_senses
 SemaphoreHandle_t BNO_Data_SemaphorHandle;   // count of data records
 SemaphoreHandle_t BNO_Space_SemaphorHandle;  // count of freequ buffers
