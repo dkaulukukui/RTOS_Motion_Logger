@@ -17,7 +17,7 @@
 
 #define BNO085_ON
 
-#define GPS_ON  //enable GPS and GPS thread
+//#define GPS_ON  //enable GPS and GPS thread
 
 #define RTC_ON
 
@@ -51,6 +51,7 @@ const u_int8_t hearbeat_rate = 1; //seconds between flashes
 const u_int16_t Thread_Rate_1Hz = 1 * configTICK_RATE_HZ;  // 1 second period * 1000 ms/s == 1Hz
 const u_int16_t Thread_Rate_5Hz = 0.2 * configTICK_RATE_HZ;  // 0.2 second period * 1000 ms/s == 5Hz
 const u_int16_t Thread_Rate_10Hz = 0.1 * configTICK_RATE_HZ;  // 0.1 second period * 1000 ms/s == 10Hz
+const u_int16_t Thread_Rate_25Hz = 0.04 * configTICK_RATE_HZ;  // 0.01 second period * 1000 ms/s == 25Hz
 const u_int16_t Thread_Rate_50Hz = 0.02 * configTICK_RATE_HZ;  // 0.02 second period * 1000 ms/s == 50Hz
 const u_int16_t Thread_Rate_100Hz = 0.01 * configTICK_RATE_HZ;  // 0.01 second period * 1000 ms/s == 100Hz
 
@@ -62,6 +63,7 @@ long reportInterval_10Hz = 100000; //  in uS = 10Hz
 //Data Gathering Rate = 10 Hz
 
 const u_int16_t DATA_THREAD_RATE = Thread_Rate_10Hz; //10Hz
+//const u_int16_t DATA_THREAD_RATE = Thread_Rate_25Hz; //10Hz
 
 //BNO085 Report rates 
 long ROTATION_REPORT_RATE = reportInterval_50Hz; //50Hz , breaks when less
@@ -133,6 +135,12 @@ int BNO_error = 0;             // count of overrun error_senses
 SemaphoreHandle_t BNO_Data_SemaphorHandle;   // count of data records
 SemaphoreHandle_t BNO_Space_SemaphorHandle;  // count of freequ buffers
 
+struct euler_t {
+  float yaw;
+  float pitch;
+  float roll;
+} ;
+
 struct BNO_DATA {
   //float Accel_X;
   //float Accel_Y;
@@ -171,20 +179,16 @@ struct BNO_DATA {
   //int16_t RawMag_Y;
   //int16_t RawMag_Z;
   DateTime log_time;
+  euler_t bno_ypr;
+  float heading;
+  float rot_accuracy;
 };                          //structure of BNO data
 
 BNO_DATA BNO_Array[BNO_ARRAY_SIZE]; //Array to hold BNO data
 BNO_DATA BNO_Transmit[BNO_ARRAY_SIZE]; 
 
-struct euler_t {
-  float yaw;
-  float pitch;
-  float roll;
-} ypr;
-
-// Vars to hold most recent report values
-float heading, rot_accuracy;
-int acc_status;
+// Vars to hold most recent report values, JUST SAY NO TO GLOBALS!!!
+//float heading, rot_accuracy;
 
 
 //const float MAGNETIC_DECLINATION = -9.48; //Honolulu

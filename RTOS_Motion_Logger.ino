@@ -31,7 +31,7 @@ void setReports(void) {
 }
 
 //***********MATH STUFF***************************************************************
-void quaternionToEuler(float qr, float qi, float qj, float qk, euler_t* ypr, bool degrees = false) {
+void quaternionToEuler(float qr, float qi, float qj, float qk, euler_t *ypr, bool degrees = false) {
 
     float sqr = sq(qr);
     float sqi = sq(qi);
@@ -49,8 +49,10 @@ void quaternionToEuler(float qr, float qi, float qj, float qk, euler_t* ypr, boo
     }
 }
 
-void Normalized_quaternionToEuler(float qr, float qi, float qj, float qk, euler_t* ypr, bool degrees = false) {
+euler_t Normalized_quaternionToEuler(float qr, float qi, float qj, float qk, bool degrees = false) {
   // Normalise quaternion before conversion.
+  euler_t ypr;
+
   float qlength = sqrt(sq(qr) + sq(qi) + sq(qj) + sq(qk));
   qr /= qlength;
   qi /= qlength;
@@ -62,17 +64,19 @@ void Normalized_quaternionToEuler(float qr, float qi, float qj, float qk, euler_
   float sqj = sq(qj);
   float sqk = sq(qk);
 
-  ypr->yaw =  atan2( 2.0 * (qi * qj + qk * qr),  (sqi - sqj - sqk + sqr));
+  ypr.yaw =  atan2( 2.0 * (qi * qj + qk * qr),  (sqi - sqj - sqk + sqr));
   //ypr->pitch = asin(-2.0 * (qi * qk - qj * qr) / (sqi + sqj + sqk + sqr));
   //ypr->roll = atan2( 2.0 * (qj * qk + qi * qr), (-sqi - sqj + sqk + sqr));
-  ypr->roll = asin(-2.0 * (qi * qk - qj * qr) / (sqi + sqj + sqk + sqr));  //swapped for default orientation
-  ypr->pitch = atan2( 2.0 * (qj * qk + qi * qr), (-sqi - sqj + sqk + sqr));  //swapped for default orientation
+  ypr.roll = asin(-2.0 * (qi * qk - qj * qr) / (sqi + sqj + sqk + sqr));  //swapped for default orientation
+  ypr.pitch = atan2( 2.0 * (qj * qk + qi * qr), (-sqi - sqj + sqk + sqr));  //swapped for default orientation
 
   if (degrees) {
-    ypr->yaw   *= RAD_TO_DEG;
-    ypr->pitch *= RAD_TO_DEG;
-    ypr->roll  *= RAD_TO_DEG;
+    ypr.yaw   *= RAD_TO_DEG;
+    ypr.pitch *= RAD_TO_DEG;
+    ypr.roll  *= RAD_TO_DEG;
   }
+
+  return ypr;
 }
 
 void quaternionToEulerRV(sh2_RotationVectorWAcc_t* rotational_vector, euler_t* ypr, bool degrees = false) {
@@ -197,6 +201,9 @@ static void threadA( void *pvParameters )  //Data Getting task
   //**************************************************************************
   //Serial.println("Adafruit BNO08x test!");
 
+  bool accel_sensors_updated = false;
+  bool rot_sensors_updated = false; //initialize sensor flags
+
   // Try to initialize!
   while (!bno08x.begin_I2C()) {
   //if (!bno08x.begin_I2C()) {
@@ -266,106 +273,114 @@ static void threadA( void *pvParameters )  //Data Getting task
       setReports();
     }
 
-    if (bno08x.getSensorEvent(&sensorValue)) { 
+          // get a buffer
+    if (xSemaphoreTake(BNO_Space_SemaphorHandle, 0) == pdTRUE) {
+      //BNO_error++;  // fifo full - indicate missed point
+      //Serial.println(F("BNO buffer full"));
+      //continue;
+    
+      while ((rot_sensors_updated && accel_sensors_updated) != true ){
 
-      // get a buffer
-      if (xSemaphoreTake(BNO_Space_SemaphorHandle, 0) != pdTRUE) {
-        BNO_error++;  // fifo full - indicate missed point
-        Serial.println(F("BNO buffer full"));
-        continue;
+        //SERIAL.println("waiting for sensor data");
+        if (bno08x.getSensorEvent(&sensorValue)) { 
+
+          BNO_DATA *bno_data = &BNO_Array[BNO_Head_Q]; //grab the first data set in Q
+
+          switch (sensorValue.sensorId) {
+
+            /*
+            case SH2_ACCELEROMETER:
+              bno_data->Accel_X = sensorValue.un.accelerometer.x;
+              bno_data->Accel_Y = sensorValue.un.accelerometer.y;
+              bno_data->Accel_Z = sensorValue.un.accelerometer.z;
+              break;
+            case SH2_GYROSCOPE_CALIBRATED:
+              bno_data->Gyro_X = sensorValue.un.gyroscope.x;
+              bno_data->Gyro_Y = sensorValue.un.gyroscope.y;
+              bno_data->Gyro_Z = sensorValue.un.gyroscope.z;
+              break;
+            case SH2_MAGNETIC_FIELD_CALIBRATED:
+              bno_data->Mag_X = sensorValue.un.magneticField.x;
+              bno_data->Mag_Y = sensorValue.un.magneticField.y;
+              bno_data->Mag_Z = sensorValue.un.magneticField.z;
+              break;
+
+              */
+            case SH2_LINEAR_ACCELERATION:
+              bno_data->LinearAccel_X = sensorValue.un.linearAcceleration.x;
+              bno_data->LinearAccel_Y = sensorValue.un.linearAcceleration.y;
+              bno_data->LinearAccel_Z = sensorValue.un.linearAcceleration.z;
+
+              accel_sensors_updated = true;
+              break;
+              /*
+            case SH2_GRAVITY:
+              bno_data->Grav_X = sensorValue.un.gravity.x;
+              bno_data->Grav_Y = sensorValue.un.gravity.y;
+              bno_data->Grav_Z = sensorValue.un.gravity.z;
+              break;
+              */
+            case SH2_ROTATION_VECTOR:
+              bno_data->RotVec_Real = sensorValue.un.rotationVector.real;
+              bno_data->RotVec_I = sensorValue.un.rotationVector.i;
+              bno_data->RotVec_J = sensorValue.un.rotationVector.j;
+              bno_data->RotVec_K = sensorValue.un.rotationVector.k;
+              bno_data->rot_accuracy = sensorValue.un.rotationVector.accuracy;
+
+              //Do the maths
+              bno_data->bno_ypr = Normalized_quaternionToEuler(bno_data->RotVec_Real, bno_data->RotVec_I, bno_data->RotVec_J, bno_data->RotVec_K, true); // degrees
+
+              bno_data->heading = adjustHeading(bno_data->bno_ypr.yaw, MAGNETIC_DECLINATION);
+      
+              rot_sensors_updated = true;
+
+              break;
+            /*
+            case SH2_GEOMAGNETIC_ROTATION_VECTOR:
+              bno_data->GeoMagVec_Real = sensorValue.un.geoMagRotationVector.real;
+              bno_data->GeoMagVec_I = sensorValue.un.geoMagRotationVector.i;
+              bno_data->GeoMagVec_J = sensorValue.un.geoMagRotationVector.j;
+              bno_data->GeoMagVec_K = sensorValue.un.geoMagRotationVector.k;
+              break;
+
+            case SH2_GAME_ROTATION_VECTOR:
+              bno_data->GameRotVec_Real = sensorValue.un.gameRotationVector.real;
+              bno_data->GameRotVec_I = sensorValue.un.gameRotationVector.i;
+              bno_data->GameRotVec_J = sensorValue.un.gameRotationVector.j;
+              bno_data->GameRotVec_K = sensorValue.un.gameRotationVector.k;
+              break;
+
+            case SH2_RAW_ACCELEROMETER:
+              bno_data->RawAccel_X = sensorValue.un.rawAccelerometer.x;
+              bno_data->RawAccel_Y = sensorValue.un.rawAccelerometer.y;
+              bno_data->RawAccel_Z = sensorValue.un.rawAccelerometer.z;
+              break;
+            case SH2_RAW_GYROSCOPE:
+              bno_data->RawGyro_X = sensorValue.un.rawGyroscope.x;
+              bno_data->RawGyro_Y = sensorValue.un.rawGyroscope.y;
+              bno_data->RawGyro_Z = sensorValue.un.rawGyroscope.z;
+              break;
+            case SH2_RAW_MAGNETOMETER:
+              bno_data->RawMag_X = sensorValue.un.rawMagnetometer.x;
+              bno_data->RawMag_Y = sensorValue.un.rawMagnetometer.y;
+              bno_data->RawMag_Z = sensorValue.un.rawMagnetometer.z;
+              break;
+              */
+          }
+
+          bno_data->log_time = rtc.now();  // time data is logged
+
+        }
       }
-
-      acc_status = sensorValue.status;
-
-      BNO_DATA *bno_data = &BNO_Array[BNO_Head_Q]; //grab the first data set in Q
-
-      switch (sensorValue.sensorId) {
-
-        /*
-        case SH2_ACCELEROMETER:
-          bno_data->Accel_X = sensorValue.un.accelerometer.x;
-          bno_data->Accel_Y = sensorValue.un.accelerometer.y;
-          bno_data->Accel_Z = sensorValue.un.accelerometer.z;
-          break;
-        case SH2_GYROSCOPE_CALIBRATED:
-          bno_data->Gyro_X = sensorValue.un.gyroscope.x;
-          bno_data->Gyro_Y = sensorValue.un.gyroscope.y;
-          bno_data->Gyro_Z = sensorValue.un.gyroscope.z;
-          break;
-        case SH2_MAGNETIC_FIELD_CALIBRATED:
-          bno_data->Mag_X = sensorValue.un.magneticField.x;
-          bno_data->Mag_Y = sensorValue.un.magneticField.y;
-          bno_data->Mag_Z = sensorValue.un.magneticField.z;
-          break;
-
-          */
-        case SH2_LINEAR_ACCELERATION:
-          bno_data->LinearAccel_X = sensorValue.un.linearAcceleration.x;
-          bno_data->LinearAccel_Y = sensorValue.un.linearAcceleration.y;
-          bno_data->LinearAccel_Z = sensorValue.un.linearAcceleration.z;
-          break;
-          /*
-        case SH2_GRAVITY:
-          bno_data->Grav_X = sensorValue.un.gravity.x;
-          bno_data->Grav_Y = sensorValue.un.gravity.y;
-          bno_data->Grav_Z = sensorValue.un.gravity.z;
-          break;
-          */
-        case SH2_ROTATION_VECTOR:
-          bno_data->RotVec_Real = sensorValue.un.rotationVector.real;
-          bno_data->RotVec_I = sensorValue.un.rotationVector.i;
-          bno_data->RotVec_J = sensorValue.un.rotationVector.j;
-          bno_data->RotVec_K = sensorValue.un.rotationVector.k;
-
-          //Do the maths
-          Normalized_quaternionToEuler(bno_data->RotVec_Real, bno_data->RotVec_I, bno_data->RotVec_J, bno_data->RotVec_K, &ypr, true); // degrees
-          //yaw = ypr.yaw;
-          //pitch = ypr.pitch;
-          //roll = ypr.roll;
-          heading = adjustHeading(ypr.yaw, MAGNETIC_DECLINATION);
-          rot_accuracy = sensorValue.un.rotationVector.accuracy;
-          break;
-        /*
-        case SH2_GEOMAGNETIC_ROTATION_VECTOR:
-          bno_data->GeoMagVec_Real = sensorValue.un.geoMagRotationVector.real;
-          bno_data->GeoMagVec_I = sensorValue.un.geoMagRotationVector.i;
-          bno_data->GeoMagVec_J = sensorValue.un.geoMagRotationVector.j;
-          bno_data->GeoMagVec_K = sensorValue.un.geoMagRotationVector.k;
-          break;
-
-        case SH2_GAME_ROTATION_VECTOR:
-          bno_data->GameRotVec_Real = sensorValue.un.gameRotationVector.real;
-          bno_data->GameRotVec_I = sensorValue.un.gameRotationVector.i;
-          bno_data->GameRotVec_J = sensorValue.un.gameRotationVector.j;
-          bno_data->GameRotVec_K = sensorValue.un.gameRotationVector.k;
-          break;
-
-        case SH2_RAW_ACCELEROMETER:
-          bno_data->RawAccel_X = sensorValue.un.rawAccelerometer.x;
-          bno_data->RawAccel_Y = sensorValue.un.rawAccelerometer.y;
-          bno_data->RawAccel_Z = sensorValue.un.rawAccelerometer.z;
-          break;
-        case SH2_RAW_GYROSCOPE:
-          bno_data->RawGyro_X = sensorValue.un.rawGyroscope.x;
-          bno_data->RawGyro_Y = sensorValue.un.rawGyroscope.y;
-          bno_data->RawGyro_Z = sensorValue.un.rawGyroscope.z;
-          break;
-        case SH2_RAW_MAGNETOMETER:
-          bno_data->RawMag_X = sensorValue.un.rawMagnetometer.x;
-          bno_data->RawMag_Y = sensorValue.un.rawMagnetometer.y;
-          bno_data->RawMag_Z = sensorValue.un.rawMagnetometer.z;
-          break;
-          */
-      }
-
-      bno_data->log_time = rtc.now();  // time data is logged
 
       BNO_error = 0;
       BNO_Head_Q = BNO_Head_Q < (BNO_ARRAY_SIZE -1) ? BNO_Head_Q +1 : 0; //advance fifo index, if true increment, else reset
       xSemaphoreGive(BNO_Data_SemaphorHandle);  //signal new data
 
+      rot_sensors_updated = false;
+      accel_sensors_updated = false;
+  
     }
-
   }
 
 }
@@ -505,10 +520,10 @@ static void threadB( void *pvParameters )  //Data Output
       xSemaphoreTake(BNO_Data_SemaphorHandle, portMAX_DELAY);  // wait for next data record
       bno_data = &BNO_Array[BNO_Tail_Q];
 
-      append_float_to_log(buf,heading,5,2,LOG_SEPARATOR);
-      append_float_to_log(buf,ypr.pitch,5,2,LOG_SEPARATOR);
-      append_float_to_log(buf,ypr.roll,5,2,LOG_SEPARATOR);
-      append_float_to_log(buf,rot_accuracy,5,2,LOG_SEPARATOR);
+      append_float_to_log(buf,bno_data->heading,5,2,LOG_SEPARATOR);
+      append_float_to_log(buf,bno_data->bno_ypr.pitch,5,2,LOG_SEPARATOR);
+      append_float_to_log(buf,bno_data->bno_ypr.roll,5,2,LOG_SEPARATOR);
+      append_float_to_log(buf,bno_data->rot_accuracy,5,2,LOG_SEPARATOR);
       append_float_to_log(buf,bno_data->LinearAccel_X,5,2,LOG_SEPARATOR);
       append_float_to_log(buf,bno_data->LinearAccel_Y,5,2,LOG_SEPARATOR);
       append_float_to_log(buf,bno_data->LinearAccel_Z,5,2,LOG_SEPARATOR);
@@ -734,9 +749,11 @@ void taskMonitor(void *pvParameters)
       SERIAL.print(F("Task Monitor: "));
       SERIAL.println(measurement);
 
+    #ifdef GPS_ON
       measurement = uxTaskGetStackHighWaterMark( Handle_gpsTask );
       SERIAL.print(F("GPS Stack: "));
       SERIAL.println(measurement);
+    #endif
 
       SERIAL.println(F("****************************************************"));
       SERIAL.flush();
